@@ -13,7 +13,6 @@ add_subdirectory(lib/karto_sdk)
 
 find_package(catkin REQUIRED
   COMPONENTS
-    cmake_modules
     message_filters
     nav_msgs
     karto_sdk
@@ -86,7 +85,7 @@ catkin_package(
 
 #### Ceres Plugin
 add_library(ceres_solver_plugin solvers/ceres_solver.cpp)
-target_link_libraries(ceres_solver_plugin ${catkin_LIBRARIES} 
+target_link_libraries(ceres_solver_plugin ${catkin_LIBRARIES}
                                           ${CERES_LIBRARIES}
                                           ${Boost_LIBRARIES}
                                           ${TBB_LIBRARIES}

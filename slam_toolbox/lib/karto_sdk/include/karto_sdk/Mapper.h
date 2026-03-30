@@ -32,6 +32,7 @@
 #include <chrono>
 
 #include <karto_sdk/Karto.h>
+#include <karto_sdk/DefaultLoopClosureCandidateSelector.h>
 
 #include "nanoflann_adaptors.h"
 
@@ -706,6 +707,7 @@ namespace karto
 
   class Mapper;
   class ScanMatcher;
+  class LoopClosureCandidateSelector;
 
   /**
    * Graph for graph SLAM algorithm
@@ -719,9 +721,7 @@ namespace karto
      * @param rangeThreshold
      */
     MapperGraph(Mapper* pMapper, kt_double rangeThreshold);
-    MapperGraph()
-    {
-    }
+    MapperGraph();
     /**
      * Destructor
      */
@@ -807,6 +807,13 @@ namespace karto
     {
       return m_pLoopScanMatcher;
     }
+
+    /**
+     * Replace the loop closure candidate selector.
+     * Pass nullptr to restore the built-in default.
+     * MapperGraph does NOT take ownership when a non-null selector is set.
+     */
+    void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
 
     /**
      * Create new scan matcher for graph
@@ -919,6 +926,12 @@ namespace karto
     GraphTraversal<LocalizedRangeScan>* m_pTraversal;
 
     /**
+     * Active loop closure candidate selector. Lifetime is managed by the caller
+     * (e.g. SlamToolbox via pluginlib). Must be set before the first scan is processed.
+     */
+    LoopClosureCandidateSelector* m_pCandidateSelector;
+
+    /**
      * Serialization: class MapperGraph
      */
     friend class boost::serialization::access;
@@ -936,6 +949,11 @@ namespace karto
     }
 
   };  // MapperGraph
+
+  // LoopClosureCandidateSelector is defined in LoopClosureCandidateSelector.h
+  // and DefaultLoopClosureCandidateSelector in DefaultLoopClosureCandidateSelector.h,
+  // so plugins only need to include the lightweight interface header.
+
 
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -2026,6 +2044,12 @@ namespace karto
     void SetScanSolver(ScanSolver* pSolver);
 
     /**
+     * Set the loop closure candidate selector used by the mapper.
+     * Pass nullptr to restore the built-in default.
+     */
+    void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
+
+    /**
      * Gets scan optimizer used by mapper when closing the loop
      * @return pSolver
      */
@@ -2149,6 +2173,7 @@ namespace karto
 
     MapperGraph* m_pGraph;
     ScanSolver* m_pScanOptimizer;
+    LoopClosureCandidateSelector* m_pPendingCandidateSelector;
     LocalizationScanVertices m_LocalizationScanVertices;
 
 
@@ -2391,7 +2416,7 @@ namespace karto
     /* Getters */
     // General Parameters
     bool getParamUseScanMatching();
-    bool getParamUseScanBarycenter();
+    bool getParamUseScanBarycenter() const;
     double getParamMinimumTimeInterval();
     double getParamMinimumTravelDistance();
     double getParamMinimumTravelHeading();
@@ -2399,9 +2424,9 @@ namespace karto
     double getParamScanBufferMaximumScanDistance();
     double getParamLinkMatchMinimumResponseFine();
     double getParamLinkScanMaximumDistance();
-    double getParamLoopSearchMaximumDistance();
+    double getParamLoopSearchMaximumDistance() const;
     bool getParamDoLoopClosing();
-    int getParamLoopMatchMinimumChainSize();
+    int getParamLoopMatchMinimumChainSize() const;
     double getParamLoopMatchMaximumVarianceCoarse();
     double getParamLoopMatchMinimumResponseCoarse();
     double getParamLoopMatchMinimumResponseFine();

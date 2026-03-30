@@ -1422,13 +1422,14 @@ namespace karto
   }
   };  // NearPoseVisitor
 
-  ////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////////////
-
+  MapperGraph::MapperGraph()
+    : m_pCandidateSelector(nullptr)
+  {
+  }
 
   MapperGraph::MapperGraph(Mapper* pMapper, kt_double rangeThreshold)
-    : m_pMapper(pMapper)
+    : m_pMapper(pMapper),
+      m_pCandidateSelector(nullptr)
   {
     m_pLoopScanMatcher = ScanMatcher::Create(pMapper, m_pMapper->m_pLoopSearchSpaceDimension->GetValue(),
                                              m_pMapper->m_pLoopSearchSpaceResolution->GetValue(),
@@ -1450,6 +1451,11 @@ namespace karto
       delete m_pTraversal;
       m_pTraversal = NULL;
     }
+  }
+
+  void MapperGraph::SetCandidateSelector(LoopClosureCandidateSelector* pSelector)
+  {
+    m_pCandidateSelector = pSelector;
   }
 
   Vertex<LocalizedRangeScan>* MapperGraph::AddVertex(LocalizedRangeScan* pScan)
@@ -1990,55 +1996,19 @@ namespace karto
                                                                 const Name& rSensorName,
                                                                 kt_int32u& rStartNum)
   {
-    LocalizedRangeScanVector chain;  // return value
-
-    Pose2 pose = pScan->GetReferencePose(m_pMapper->m_pUseScanBarycenter->GetValue());
-
     // possible loop closure chain should not include close scans that have a
     // path of links to the scan of interest
     const LocalizedRangeScanVector nearLinkedScans =
           FindNearLinkedScans(pScan, m_pMapper->m_pLoopSearchMaximumDistance->GetValue());
 
-    kt_int32u nScans = static_cast<kt_int32u>(m_pMapper->m_pMapperSensorManager->GetScans(rSensorName).size());
-    for (; rStartNum < nScans; rStartNum++)
-    {
-      LocalizedRangeScan* pCandidateScan = m_pMapper->m_pMapperSensorManager->GetScan(rSensorName, rStartNum);
+    const LocalizedRangeScanMap& allScans =
+          m_pMapper->m_pMapperSensorManager->GetScans(rSensorName);
 
-      if (pCandidateScan == NULL)
-      {
-        continue;
-      }
-
-      Pose2 candidateScanPose = pCandidateScan->GetReferencePose(m_pMapper->m_pUseScanBarycenter->GetValue());
-
-      kt_double squaredDistance = candidateScanPose.GetPosition().SquaredDistance(pose.GetPosition());
-      if (squaredDistance < math::Square(m_pMapper->m_pLoopSearchMaximumDistance->GetValue()) + KT_TOLERANCE)
-      {
-        // a linked scan cannot be in the chain
-        if (find(nearLinkedScans.begin(), nearLinkedScans.end(), pCandidateScan) != nearLinkedScans.end())
-        {
-          chain.clear();
-        }
-        else
-        {
-          chain.push_back(pCandidateScan);
-        }
-      }
-      else
-      {
-        // return chain if it is long "enough"
-        if (chain.size() >= m_pMapper->m_pLoopMatchMinimumChainSize->GetValue())
-        {
-          return chain;
-        }
-        else
-        {
-          chain.clear();
-        }
-      }
-    }
-
-    return chain;
+    return m_pCandidateSelector->FindCandidates(
+      pScan,
+      allScans,
+      nearLinkedScans,
+      rStartNum);
   }
 
   void MapperGraph::CorrectPoses()
@@ -2089,7 +2059,8 @@ namespace karto
     m_pSequentialScanMatcher(NULL),
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
-    m_pScanOptimizer(NULL)
+    m_pScanOptimizer(NULL),
+    m_pPendingCandidateSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2104,7 +2075,8 @@ namespace karto
     m_pSequentialScanMatcher(NULL),
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
-    m_pScanOptimizer(NULL)
+    m_pScanOptimizer(NULL),
+    m_pPendingCandidateSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2335,7 +2307,7 @@ namespace karto
     return static_cast<bool>(m_pUseScanMatching->GetValue());
   }
 
-  bool Mapper::getParamUseScanBarycenter()
+  bool Mapper::getParamUseScanBarycenter() const
   {
     return static_cast<bool>(m_pUseScanBarycenter->GetValue());
   }
@@ -2375,7 +2347,7 @@ namespace karto
     return static_cast<double>(m_pLinkScanMaximumDistance->GetValue());
   }
 
-  double Mapper::getParamLoopSearchMaximumDistance()
+  double Mapper::getParamLoopSearchMaximumDistance() const
   {
     return static_cast<double>(m_pLoopSearchMaximumDistance->GetValue());
   }
@@ -2385,7 +2357,7 @@ namespace karto
     return static_cast<bool>(m_pDoLoopClosing->GetValue());
   }
 
-  int Mapper::getParamLoopMatchMinimumChainSize()
+  int Mapper::getParamLoopMatchMinimumChainSize() const
   {
     return static_cast<int>(m_pLoopMatchMinimumChainSize->GetValue());
   }
@@ -2663,6 +2635,12 @@ namespace karto
         m_pScanBufferMaximumScanDistance->GetValue());
 
       m_pGraph = new MapperGraph(this, rangeThreshold);
+    }
+
+    if (m_pPendingCandidateSelector)
+    {
+      m_pGraph->SetCandidateSelector(m_pPendingCandidateSelector);
+      m_pPendingCandidateSelector = nullptr;
     }
 
     m_Initialized = true;
@@ -3321,6 +3299,19 @@ namespace karto
   void Mapper::SetScanSolver(ScanSolver* pScanOptimizer)
   {
 	  m_pScanOptimizer = pScanOptimizer;
+  }
+
+  void Mapper::SetCandidateSelector(LoopClosureCandidateSelector* pSelector)
+  {
+    if (m_pGraph)
+    {
+      m_pGraph->SetCandidateSelector(pSelector);
+    }
+    else
+    {
+      // Graph not yet created (Initialize() not called yet); store for later.
+      m_pPendingCandidateSelector = pSelector;
+    }
   }
 
   ScanSolver* Mapper::getScanSolver()
