@@ -21,10 +21,14 @@
 
 #include <vector>
 #include <string>
+#include <fstream>
+#include <unordered_map>
 #include <ros/ros.h>
 #include <karto_sdk/Karto.h>
 #include <karto_sdk/Mapper.h>
 #include <sys/stat.h>
+#include <yaml-cpp/yaml.h>
+#include "slam_toolbox/session_label.hpp"
 
 namespace serialization
 {
@@ -35,9 +39,49 @@ inline bool fileExists(const std::string& name)
   return (stat (name.c_str(), &buffer) == 0);
 }
 
+inline void saveLabelsToFile(const std::string& filename,
+  const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
+{
+  YAML::Node root;
+  for (const auto& kv : labels)
+  {
+    YAML::Node entry = kv.second.serialize();
+    entry["id"] = kv.first;
+    root["labels"].push_back(entry);
+  }
+  std::ofstream fout(filename);
+  fout << root;
+}
+
+inline bool loadLabelsFromFile(const std::string& filename,
+  std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
+{
+  if (!fileExists(filename))
+  {
+    return false;
+  }
+  try
+  {
+    YAML::Node root = YAML::LoadFile(filename);
+    for (const auto& entry : root["labels"])
+    {
+      int id = entry["id"].as<int>();
+      labels[id] = slam_toolbox::SessionLabel::deserialize(entry);
+    }
+  }
+  catch (const YAML::Exception& e)
+  {
+    ROS_WARN("serialization: Failed to read labels file: %s. "
+      "Continuing without labels.", e.what());
+    return false;
+  }
+  return true;
+}
+
 inline void write(const std::string& filename,
   karto::Mapper& mapper,
-  karto::Dataset& dataset)
+  karto::Dataset& dataset,
+  const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
 {
   try
   {
@@ -48,11 +92,14 @@ inline void write(const std::string& filename,
   {
     ROS_ERROR("Failed to write file: Exception %s", e.what());
   }
+
+  saveLabelsToFile(filename + std::string(".labels"), labels);
 }
 
 inline bool read(const std::string& filename,
   karto::Mapper& mapper,
-  karto::Dataset& dataset)
+  karto::Dataset& dataset,
+  std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
 {
   if (!fileExists(filename + std::string(".posegraph")))
   {
@@ -65,15 +112,18 @@ inline bool read(const std::string& filename,
   {
     mapper.LoadFromFile(filename + std::string(".posegraph"));
     dataset.LoadFromFile(filename + std::string(".data"));
-    return true;
   }
   catch (boost::archive::archive_exception e)
   {
     ROS_ERROR("serialization::Read: Failed to read file: "
       "Exception: %s", e.what());
+    return false;
   }
 
-  return false;
+  labels.clear();
+  loadLabelsFromFile(filename + std::string(".labels"), labels);
+
+  return true;
 }
 
 } // end namespace

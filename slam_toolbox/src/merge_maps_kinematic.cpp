@@ -61,8 +61,9 @@ bool MergeMapsKinematic::addSubmapCallback(
 {
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
+  std::unordered_map<int, slam_toolbox::SessionLabel> labels;
 
-  if (!serialization::read(req.filename, *mapper, *dataset))
+  if (!serialization::read(req.filename, *mapper, *dataset, labels))
   {
     ROS_ERROR("addSubmapCallback: Failed to read "
       "file: %s.", req.filename.c_str());

@@ -7,6 +7,13 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/CMake/")
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/karto_sdk/cmake)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -std=c++17")
 
+# Add googletest before karto_sdk so catkin's gtest.cmake (loaded by karto_sdk's
+# find_package(catkin)) finds targets already defined in this project's scope,
+# ensuring make rules land in slam_toolbox's Makefile2 rather than nowhere.
+if(NOT TARGET gmock)
+  add_subdirectory(/usr/src/googletest ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
+endif()
+
 #karto_sdk lib
 set(BUILD_SHARED_LIBS ON)
 add_subdirectory(lib/karto_sdk)
@@ -93,7 +100,7 @@ target_link_libraries(ceres_solver_plugin ${catkin_LIBRARIES}
 
 #### Tool lib for mapping
 add_library(toolbox_common src/slam_toolbox_common.cpp src/map_saver.cpp src/loop_closure_assistant.cpp src/laser_utils.cpp src/slam_mapper.cpp)
-target_link_libraries(toolbox_common kartoSlamToolbox ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+target_link_libraries(toolbox_common kartoSlamToolbox ${catkin_LIBRARIES} ${Boost_LIBRARIES} yaml-cpp)
 
 #### Mapping executibles
 add_library(async_slam_toolbox src/slam_toolbox_async.cpp)
@@ -118,7 +125,7 @@ target_link_libraries(lifelong_slam_toolbox_node lifelong_slam_toolbox)
 
 #### Merging maps tool
 add_executable(merge_maps_kinematic src/merge_maps_kinematic.cpp)
-target_link_libraries(merge_maps_kinematic toolbox_common)
+target_link_libraries(merge_maps_kinematic toolbox_common yaml-cpp)
 
 #### testing
 #if(CATKIN_ENABLE_TESTING)
@@ -126,6 +133,10 @@ target_link_libraries(merge_maps_kinematic toolbox_common)
 #  catkin_add_gtest(lifelong_metrics_test test/lifelong_metrics_test.cpp)
 #  target_link_libraries(lifelong_metrics_test lifelong_slam_toolbox)
 #endif()
+
+if(CATKIN_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
 
 #### Install
 install(TARGETS toolbox_common

@@ -170,6 +170,11 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
 
   smapper_->configure(private_nh);
   private_nh.setParam("paused_new_measurements", false);
+
+  slam_toolbox::SessionLabel session_label;
+  private_nh.param("session_label/session_id", session_label.session_id, 0);
+  smapper_->setSessionLabel(session_label);
+  ROS_INFO("SlamToolbox: session_label = %s", YAML::Dump(session_label.serialize()).c_str());
 }
 
 /*****************************************************************************/
@@ -561,6 +566,7 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
       scan_holder_->addScan(*scan);
     }
 
+    smapper_->registerNode(range_scan->GetUniqueId());
     setTransformFromPoses(range_scan->GetCorrectedPose(), karto_pose,
       scan->header.stamp, update_reprocessing_transform);
     dataset_->Add(range_scan);
@@ -657,7 +663,8 @@ bool SlamToolbox::serializePoseGraphCallback(
   }
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
-  serialization::write(filename, *smapper_->getMapper(), *dataset_);
+  serialization::write(filename, *smapper_->getMapper(), *dataset_,
+    smapper_->getAllLabels());
   return true;
 }
 
@@ -791,8 +798,9 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
+  std::unordered_map<int, slam_toolbox::SessionLabel> labels;
 
-  if (!serialization::read(filename, *mapper, *dataset))
+  if (!serialization::read(filename, *mapper, *dataset, labels))
   {
     ROS_ERROR("DeserializePoseGraph: Failed to read "
       "file: %s.", filename.c_str());
@@ -801,6 +809,7 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
+  smapper_->setAllLabels(labels);
   updateMap();
 
   first_measurement_ = true;

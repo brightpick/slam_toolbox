@@ -23,6 +23,8 @@
 #include "karto_sdk/Mapper.h"
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
+#include "slam_toolbox/session_label.hpp"
+#include <unordered_map>
 
 namespace mapper_utils
 {
@@ -60,8 +62,18 @@ public:
 
   void clearLocalizationBuffer();
 
+  void setSessionLabel(const slam_toolbox::SessionLabel& label);
+  void registerNode(int unique_id);
+  const slam_toolbox::SessionLabel* getLabel(int unique_id) const;
+  const std::unordered_map<int, slam_toolbox::SessionLabel>& getAllLabels() const;
+  void setAllLabels(const std::unordered_map<int, slam_toolbox::SessionLabel>& labels);
+
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
+
+private:
+  std::unordered_map<int, slam_toolbox::SessionLabel> node_labels_;
+  slam_toolbox::SessionLabel current_session_label_;
 };
 
 } // end namespace

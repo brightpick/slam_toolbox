@@ -293,4 +293,35 @@ void SMapper::Reset()
   return;
 }
 
+void SMapper::setSessionLabel(const slam_toolbox::SessionLabel& label)
+{
+  current_session_label_ = label;
+}
+
+void SMapper::registerNode(int unique_id)
+{
+  node_labels_[unique_id] = current_session_label_;
+}
+
+const slam_toolbox::SessionLabel* SMapper::getLabel(int unique_id) const
+{
+  auto it = node_labels_.find(unique_id);
+  if (it == node_labels_.end())
+  {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+const std::unordered_map<int, slam_toolbox::SessionLabel>& SMapper::getAllLabels() const
+{
+  return node_labels_;
+}
+
+void SMapper::setAllLabels(
+  const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
+{
+  node_labels_ = labels;
+}
+
 } // end namespace
