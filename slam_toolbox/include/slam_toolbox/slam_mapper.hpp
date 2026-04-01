@@ -25,6 +25,7 @@
 #include "tf2/utils.h"
 #include "slam_toolbox/session_label.hpp"
 #include <unordered_map>
+#include <unordered_set>
 
 namespace mapper_utils
 {
@@ -68,12 +69,16 @@ public:
   const std::unordered_map<int, slam_toolbox::SessionLabel>& getAllLabels() const;
   void setAllLabels(const std::unordered_map<int, slam_toolbox::SessionLabel>& labels);
 
+  void setNonFixedSessionIds(std::unordered_set<int> ids);
+  const std::unordered_set<int>& getNonFixedSessionIds() const;
+
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
 
 private:
   std::unordered_map<int, slam_toolbox::SessionLabel> node_labels_;
   slam_toolbox::SessionLabel current_session_label_;
+  std::unordered_set<int> non_fixed_session_ids_;
 };
 
 } // end namespace

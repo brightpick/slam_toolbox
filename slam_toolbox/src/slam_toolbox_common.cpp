@@ -20,6 +20,7 @@
 
 #include "slam_toolbox/slam_toolbox_common.hpp"
 #include "slam_toolbox/serialization.hpp"
+#include "slam_toolbox/mapper_aware_solver.hpp"
 
 namespace slam_toolbox
 {
@@ -131,6 +132,12 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
     exit(1);
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
+
+  auto* mapper_aware = dynamic_cast<slam_toolbox::IMapperAwareSolver*>(solver_.get());
+  if (mapper_aware)
+  {
+    mapper_aware->setMapper(smapper_.get());
+  }
 }
 
 /*****************************************************************************/
@@ -175,6 +182,19 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
   private_nh.param("session_label/session_id", session_label.session_id, 0);
   smapper_->setSessionLabel(session_label);
   ROS_INFO("SlamToolbox: session_label = %s", YAML::Dump(session_label.serialize()).c_str());
+
+  XmlRpc::XmlRpcValue xml_non_fixed;
+  if (private_nh.getParam("non_fixed_session_ids", xml_non_fixed) &&
+      xml_non_fixed.getType() == XmlRpc::XmlRpcValue::TypeArray)
+  {
+    std::unordered_set<int> ids;
+    for (int i = 0; i < xml_non_fixed.size(); ++i)
+    {
+      ids.insert(static_cast<int>(xml_non_fixed[i]));
+    }
+    ROS_INFO("SlamToolbox: non_fixed_session_ids has %zu entries", ids.size());
+    smapper_->setNonFixedSessionIds(ids);
+  }
 }
 
 /*****************************************************************************/

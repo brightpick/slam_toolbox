@@ -72,3 +72,12 @@ coarse_angle_resolution: 0.0349
 minimum_angle_penalty: 0.9
 minimum_distance_penalty: 0.5
 use_response_expansion: true
+
+# Session label for scans recorded in this run.
+session_label:
+  session_id: 0
+
+# Optional: list of session_ids whose poses are allowed to move during CERES
+# optimisation. Omit (default) or set to [] to pin only the mandatory first node.
+# When non-empty, every node whose session_id is NOT in this list is pinned.
+# non_fixed_session_ids: [1, 2]

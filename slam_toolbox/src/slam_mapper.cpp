@@ -324,4 +324,14 @@ void SMapper::setAllLabels(
   node_labels_ = labels;
 }
 
+void SMapper::setNonFixedSessionIds(std::unordered_set<int> ids)
+{
+  non_fixed_session_ids_ = std::move(ids);
+}
+
+const std::unordered_set<int>& SMapper::getNonFixedSessionIds() const
+{
+  return non_fixed_session_ids_;
+}
+
 } // end namespace

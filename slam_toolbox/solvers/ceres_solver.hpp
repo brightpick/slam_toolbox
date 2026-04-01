@@ -20,6 +20,8 @@
 #include <math.h>
 
 #include "../include/slam_toolbox/toolbox_types.hpp"
+#include "../include/slam_toolbox/slam_mapper.hpp"
+#include "../include/slam_toolbox/mapper_aware_solver.hpp"
 #include "ceres_utils.h"
 
 namespace solver_plugins
@@ -27,7 +29,7 @@ namespace solver_plugins
 
 using namespace ::toolbox_types;
 
-class CeresSolver : public karto::ScanSolver
+class CeresSolver : public karto::ScanSolver, public slam_toolbox::IMapperAwareSolver
 {
 public:
   CeresSolver();
@@ -48,6 +50,8 @@ public:
   virtual void ModifyNode(const int& unique_id, Eigen::Vector3d pose); // change a node's pose
   virtual void GetNodeOrientation(const int& unique_id, double& pose); // get a node's current pose yaw
 
+  void setMapper(const mapper_utils::SMapper* smapper) override;
+
 private:
   // karto
   karto::ScanSolver::IdPoseVector corrections_;
@@ -65,6 +69,8 @@ private:
   std::unordered_map<size_t, ceres::ResidualBlockId>* blocks_;
   std::unordered_map<int, Eigen::Vector3d>::iterator first_node_;
   boost::mutex nodes_mutex_;
+
+  const mapper_utils::SMapper* smapper_{nullptr};
 };
 
 }

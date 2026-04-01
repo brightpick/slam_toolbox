@@ -1,0 +1,5 @@
+<launch>
+  <test test-name="slam_toolbox_ceres_fixed_test"
+        pkg="slam_toolbox"
+        type="slam_toolbox_ceres_fixed_test"/>
+</launch>
