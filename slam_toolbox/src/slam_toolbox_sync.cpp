@@ -32,6 +32,8 @@ SynchronousSlamToolbox::SynchronousSlamToolbox(ros::NodeHandle& nh)
     &SynchronousSlamToolbox::clearQueueCallback, this);
 
   pubQueueSize_ = nh.advertise<std_msgs::Int32>("scan_queue_size", 1);
+  queueSizeTimer_ = nh.createWallTimer(ros::WallDuration(1.0),
+    &SynchronousSlamToolbox::publishQueueSize, this);
 
   threads_.push_back(std::make_unique<boost::thread>(
     boost::bind(&SynchronousSlamToolbox::run, this)));
@@ -65,10 +67,6 @@ void SynchronousSlamToolbox::run()
               (int)q_.size());
           }
         }
-
-        std_msgs::Int32 queue_size_msg;
-        queue_size_msg.data = static_cast<int32_t>(q_.size());
-        pubQueueSize_.publish(queue_size_msg);
       }
       if(!queue_empty){
         addScan(getLaser(scan_w_pose.scan), scan_w_pose);
@@ -156,6 +154,18 @@ bool SynchronousSlamToolbox::resetCallback(
     }
   }
   return SlamToolbox::resetCallback(req, resp);
+}
+
+/*****************************************************************************/
+void SynchronousSlamToolbox::publishQueueSize(const ros::WallTimerEvent&)
+/*****************************************************************************/
+{
+  std_msgs::Int32 msg;
+  {
+    boost::mutex::scoped_lock lock(q_mutex_);
+    msg.data = static_cast<int32_t>(q_.size());
+  }
+  pubQueueSize_.publish(msg);
 }
 
 } // end namespace

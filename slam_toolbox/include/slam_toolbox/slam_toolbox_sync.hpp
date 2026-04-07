@@ -43,7 +43,10 @@ protected:
   std::queue<PosedScan> q_;
   ros::ServiceServer ssClear_;
   ros::Publisher pubQueueSize_;
+  ros::WallTimer queueSizeTimer_;
   boost::mutex q_mutex_;
+
+  void publishQueueSize(const ros::WallTimerEvent&);
 };
 
 }
