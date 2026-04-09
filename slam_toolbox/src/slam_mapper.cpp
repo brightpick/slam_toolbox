@@ -279,6 +279,13 @@ void SMapper::configure(const ros::NodeHandle& nh)
 }
 
 /*****************************************************************************/
+void SMapper::setCandidateSelector(karto::LoopClosureCandidateSelector* selector)
+/*****************************************************************************/
+{
+  mapper_->SetCandidateSelector(selector);
+}
+
+/*****************************************************************************/
 void SMapper::Reset()
 /*****************************************************************************/
 {
