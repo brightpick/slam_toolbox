@@ -18,6 +18,7 @@
 /* Author: Steven Macenski */
 
 #include "slam_toolbox/slam_toolbox_sync.hpp"
+#include "std_msgs/Int32.h"
 
 namespace slam_toolbox
 {
@@ -29,6 +30,10 @@ SynchronousSlamToolbox::SynchronousSlamToolbox(ros::NodeHandle& nh)
 {
   ssClear_ = nh.advertiseService("clear_queue",
     &SynchronousSlamToolbox::clearQueueCallback, this);
+
+  pubQueueSize_ = nh.advertise<std_msgs::Int32>("scan_queue_size", 1);
+  queueSizeTimer_ = nh.createWallTimer(ros::WallDuration(1.0),
+    &SynchronousSlamToolbox::publishQueueSize, this);
 
   threads_.push_back(std::make_unique<boost::thread>(
     boost::bind(&SynchronousSlamToolbox::run, this)));
@@ -149,6 +154,18 @@ bool SynchronousSlamToolbox::resetCallback(
     }
   }
   return SlamToolbox::resetCallback(req, resp);
+}
+
+/*****************************************************************************/
+void SynchronousSlamToolbox::publishQueueSize(const ros::WallTimerEvent&)
+/*****************************************************************************/
+{
+  std_msgs::Int32 msg;
+  {
+    boost::mutex::scoped_lock lock(q_mutex_);
+    msg.data = static_cast<int32_t>(q_.size());
+  }
+  pubQueueSize_.publish(msg);
 }
 
 } // end namespace
