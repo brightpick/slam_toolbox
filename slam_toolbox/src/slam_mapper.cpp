@@ -62,9 +62,37 @@ void SMapper::clearLocalizationBuffer()
 karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 /*****************************************************************************/
 {
-  karto::OccupancyGrid* occ_grid = nullptr;
-  return karto::OccupancyGrid::CreateFromScans(mapper_->GetAllProcessedScans(),
-    resolution);
+  const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
+
+  if (!remapping_)
+  {
+    return karto::OccupancyGrid::CreateFromScans(scans, resolution);
+  }
+
+  return karto::OccupancyGrid::CreateFromScansFiltered(
+    scans,
+    resolution,
+    remapping_->bbox,
+    [this](karto::LocalizedRangeScan* pScan) -> kt_bool
+    {
+      const slam_toolbox::SessionLabel* label = getLabel(pScan->GetUniqueId());
+      const int session_id = label ? label->session_id : -1;
+      return remapping_->non_fixed_session_ids.count(session_id) > 0;
+    });
+}
+
+/*****************************************************************************/
+void SMapper::setRemapping(RemappingConfig config)
+/*****************************************************************************/
+{
+  remapping_ = std::move(config);
+}
+
+/*****************************************************************************/
+const std::optional<SMapper::RemappingConfig>& SMapper::getRemapping() const
+/*****************************************************************************/
+{
+  return remapping_;
 }
 
 /*****************************************************************************/
@@ -324,14 +352,5 @@ void SMapper::setAllLabels(
   node_labels_ = labels;
 }
 
-void SMapper::setNonFixedSessionIds(std::unordered_set<int> ids)
-{
-  non_fixed_session_ids_ = std::move(ids);
-}
-
-const std::unordered_set<int>& SMapper::getNonFixedSessionIds() const
-{
-  return non_fixed_session_ids_;
-}
 
 } // end namespace

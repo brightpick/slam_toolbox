@@ -112,7 +112,15 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   smapper.setSessionLabel(session1_label);
   smapper.registerNode(2);
 
-  smapper.setNonFixedSessionIds({1});  // only session 1 is free to move
+  // Configure remapping: session 1 is free to move; bbox is arbitrary (ceres only
+  // uses non_fixed_session_ids, not the spatial boundary).
+  {
+    mapper_utils::SMapper::RemappingConfig cfg;
+    cfg.non_fixed_session_ids = {1};
+    cfg.bbox.SetMinimum(karto::Vector2<kt_double>(0.0, 0.0));
+    cfg.bbox.SetMaximum(karto::Vector2<kt_double>(100.0, 100.0));
+    smapper.setRemapping(std::move(cfg));
+  }
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;

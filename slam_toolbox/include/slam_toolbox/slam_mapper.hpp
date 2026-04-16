@@ -24,6 +24,7 @@
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
 #include "slam_toolbox/session_label.hpp"
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -35,6 +36,16 @@ using namespace ::karto;
 class SMapper
 {
 public:
+  // Configuration for the spatial remapping filter.
+  // Both fields must be provided together — remapping requires a spatial
+  // boundary AND a set of session IDs that define the remapping session.
+  // non_fixed_session_ids also controls which poses Ceres is allowed to move.
+  struct RemappingConfig
+  {
+    karto::BoundingBox2 bbox;
+    std::unordered_set<int> non_fixed_session_ids;
+  };
+
   SMapper();
   ~SMapper();
 
@@ -69,8 +80,13 @@ public:
   const std::unordered_map<int, slam_toolbox::SessionLabel>& getAllLabels() const;
   void setAllLabels(const std::unordered_map<int, slam_toolbox::SessionLabel>& labels);
 
-  void setNonFixedSessionIds(std::unordered_set<int> ids);
-  const std::unordered_set<int>& getNonFixedSessionIds() const;
+  // Configure spatial remapping. bbox defines the remapped area; scans whose
+  // session_id is in non_fixed_session_ids may only draw inside it, all others
+  // only outside. The same session IDs also control which Ceres poses are free
+  // to move during optimisation.
+  void setRemapping(RemappingConfig config);
+
+  const std::optional<RemappingConfig>& getRemapping() const;
 
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
@@ -78,7 +94,7 @@ protected:
 private:
   std::unordered_map<int, slam_toolbox::SessionLabel> node_labels_;
   slam_toolbox::SessionLabel current_session_label_;
-  std::unordered_set<int> non_fixed_session_ids_;
+  std::optional<RemappingConfig> remapping_;
 };
 
 } // end namespace

@@ -28,6 +28,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 
@@ -6075,6 +6076,52 @@ namespace karto
     }
 
     /**
+     * Create an occupancy grid from scans with per-scan spatial filtering.
+     *
+     * Scans for which fnIsRemapping returns true may only draw INSIDE rFilterBbox;
+     * scans returning false may only draw OUTSIDE rFilterBbox. Rays are clipped at
+     * the bounding box boundary rather than skipped entirely, so free-space along
+     * the allowed segment is still correctly marked.
+     *
+     * @param rScans        all processed scans
+     * @param resolution    map resolution
+     * @param rFilterBbox   the remapped-area bounding box (world coordinates)
+     * @param fnIsRemapping predicate — returns true for remapping-session scans
+     */
+    static OccupancyGrid* CreateFromScansFiltered(
+        const LocalizedRangeScanVector& rScans,
+        kt_double resolution,
+        const BoundingBox2& rFilterBbox,
+        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping)
+    {
+      if (rScans.empty())
+      {
+        return nullptr;
+      }
+
+      kt_int32s width, height;
+      Vector2<kt_double> offset;
+      ComputeDimensions(rScans, resolution, width, height, offset);
+
+      OccupancyGrid* pGrid = new OccupancyGrid(width, height, offset, resolution);
+      pGrid->m_pCellPassCnt->Resize(pGrid->GetWidth(), pGrid->GetHeight());
+      pGrid->m_pCellPassCnt->GetCoordinateConverter()->SetOffset(
+        pGrid->GetCoordinateConverter()->GetOffset());
+      pGrid->m_pCellHitsCnt->Resize(pGrid->GetWidth(), pGrid->GetHeight());
+      pGrid->m_pCellHitsCnt->GetCoordinateConverter()->SetOffset(
+        pGrid->GetCoordinateConverter()->GetOffset());
+
+      for (LocalizedRangeScan* pScan : rScans)
+      {
+        if (!pScan) continue;
+        pGrid->AddScan(pScan, rFilterBbox, fnIsRemapping(pScan));
+      }
+
+      pGrid->Update();
+      return pGrid;
+    }
+
+    /**
      * Make a clone
      * @return occupancy grid clone
      */
@@ -6312,6 +6359,116 @@ namespace karto
     }
 
     /**
+     * Adds the scan's information to this grid's counters with spatial filtering.
+     * Rays are clipped at the bounding box boundary rather than dropped entirely,
+     * so free-space along the allowed segment is still correctly accumulated.
+     *
+     * @param pScan        scan to process
+     * @param rFilterBbox  axis-aligned bounding box of the remapped area
+     * @param allowInside  true  → only trace ray portions INSIDE  the bbox (remapping session)
+     *                     false → only trace ray portions OUTSIDE the bbox (fixed session)
+     * @param doUpdate     whether to immediately update occupancy values
+     * @return false if any clipped endpoint fell off the grid
+     */
+    virtual kt_bool AddScan(LocalizedRangeScan* pScan,
+                            const BoundingBox2& rFilterBbox,
+                            kt_bool allowInside,
+                            kt_bool doUpdate = false)
+    {
+      LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
+      const kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
+      const kt_double maxRange = laserRangeFinder->GetMaximumRange();
+      const kt_double minRange = laserRangeFinder->GetMinimumRange();
+
+      const Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
+      const PointVectorDouble& rPointReadings = pScan->GetPointReadings(false);
+
+      const Vector2<kt_double>& bboxMin = rFilterBbox.GetMinimum();
+      const Vector2<kt_double>& bboxMax = rFilterBbox.GetMaximum();
+
+      kt_bool isAllInMap = true;
+      int pointIndex = 0;
+
+      const_forEachAs(PointVectorDouble, &rPointReadings, pointsIter)
+      {
+        Vector2<kt_double> point = *pointsIter;
+        kt_double rangeReading = pScan->GetRangeReadings()[pointIndex];
+        kt_bool isEndPointValid = rangeReading < (rangeThreshold - KT_TOLERANCE);
+
+        if (rangeReading <= minRange || rangeReading >= maxRange || std::isnan(rangeReading))
+        {
+          pointIndex++;
+          continue;
+        }
+        else if (rangeReading >= rangeThreshold)
+        {
+          const kt_double ratio = rangeThreshold / rangeReading;
+          const kt_double dx = point.GetX() - scanPosition.GetX();
+          const kt_double dy = point.GetY() - scanPosition.GetY();
+          point.SetX(scanPosition.GetX() + ratio * dx);
+          point.SetY(scanPosition.GetY() + ratio * dy);
+        }
+
+        kt_double tEnter, tExit;
+        const kt_bool intersects =
+          ClipRayToBox(scanPosition, point, bboxMin, bboxMax, tEnter, tExit);
+
+        if (allowInside)
+        {
+          // Trace only the segment inside the bbox
+          if (!intersects)
+          {
+            pointIndex++;
+            continue;  // ray never enters bbox
+          }
+          const Vector2<kt_double> clippedFrom = LerpPoint(scanPosition, point, tEnter);
+          const Vector2<kt_double> clippedTo   = LerpPoint(scanPosition, point, tExit);
+          // Endpoint is valid only when the original endpoint is inside the box
+          const kt_bool clippedEndpointValid = isEndPointValid && (tExit >= 1.0 - KT_TOLERANCE);
+          if (!RayTrace(clippedFrom, clippedTo, clippedEndpointValid, doUpdate))
+          {
+            isAllInMap = false;
+          }
+        }
+        else
+        {
+          // Trace only segment(s) outside the bbox
+          if (!intersects)
+          {
+            // Entire ray is outside bbox — trace normally
+            if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate))
+            {
+              isAllInMap = false;
+            }
+          }
+          else
+          {
+            // First outside segment: [origin → bbox entry]
+            if (tEnter > KT_TOLERANCE)
+            {
+              const Vector2<kt_double> entryPoint = LerpPoint(scanPosition, point, tEnter);
+              RayTrace(scanPosition, entryPoint, false, doUpdate);
+            }
+            // Second outside segment: [bbox exit → endpoint]
+            if (tExit < 1.0 - KT_TOLERANCE)
+            {
+              const Vector2<kt_double> exitPoint = LerpPoint(scanPosition, point, tExit);
+              if (!RayTrace(exitPoint, point, isEndPointValid, doUpdate))
+              {
+                isAllInMap = false;
+              }
+            }
+            // tEnter ≈ 0 and tExit ≈ 1: ray entirely inside bbox — skip
+          }
+        }
+
+        pointIndex++;
+      }
+
+      return isAllInMap;
+    }
+
+    /**
      * Traces a beam from the start position to the end position marking
      * the bookkeeping arrays accordingly.
      * @param rWorldFrom start position of beam
@@ -6437,6 +6594,74 @@ namespace karto
     const OccupancyGrid& operator=(const OccupancyGrid&);
 
   private:
+    /**
+     * Linear interpolation between two world points.
+     * @param t  parameter in [0, 1]: 0 → rFrom, 1 → rTo
+     */
+    static Vector2<kt_double> LerpPoint(const Vector2<kt_double>& rFrom,
+                                        const Vector2<kt_double>& rTo,
+                                        kt_double t)
+    {
+      return Vector2<kt_double>(
+        rFrom.GetX() + t * (rTo.GetX() - rFrom.GetX()),
+        rFrom.GetY() + t * (rTo.GetY() - rFrom.GetY()));
+    }
+
+    /**
+     * Slab-method AABB line clip (Liang-Barsky).
+     *
+     * Clips the segment [rFrom, rTo] (parametrised as rFrom + t*(rTo-rFrom), t∈[0,1])
+     * against the axis-aligned box [rBboxMin, rBboxMax].
+     *
+     * @param rTEnter  on success: t where the segment enters the box (≥ 0)
+     * @param rTExit   on success: t where the segment exits  the box (≤ 1)
+     * @return true if the segment intersects the box
+     */
+    static kt_bool ClipRayToBox(const Vector2<kt_double>& rFrom,
+                                const Vector2<kt_double>& rTo,
+                                const Vector2<kt_double>& rBboxMin,
+                                const Vector2<kt_double>& rBboxMax,
+                                kt_double& rTEnter,
+                                kt_double& rTExit)
+    {
+      const kt_double dx = rTo.GetX() - rFrom.GetX();
+      const kt_double dy = rTo.GetY() - rFrom.GetY();
+      rTEnter = 0.0;
+      rTExit  = 1.0;
+
+      // X slab
+      if (std::abs(dx) < KT_TOLERANCE)
+      {
+        if (rFrom.GetX() < rBboxMin.GetX() || rFrom.GetX() > rBboxMax.GetX()) return false;
+      }
+      else
+      {
+        kt_double t1 = (rBboxMin.GetX() - rFrom.GetX()) / dx;
+        kt_double t2 = (rBboxMax.GetX() - rFrom.GetX()) / dx;
+        if (t1 > t2) std::swap(t1, t2);
+        rTEnter = std::max(rTEnter, t1);
+        rTExit  = std::min(rTExit,  t2);
+        if (rTEnter > rTExit) return false;
+      }
+
+      // Y slab
+      if (std::abs(dy) < KT_TOLERANCE)
+      {
+        if (rFrom.GetY() < rBboxMin.GetY() || rFrom.GetY() > rBboxMax.GetY()) return false;
+      }
+      else
+      {
+        kt_double t1 = (rBboxMin.GetY() - rFrom.GetY()) / dy;
+        kt_double t2 = (rBboxMax.GetY() - rFrom.GetY()) / dy;
+        if (t1 > t2) std::swap(t1, t2);
+        rTEnter = std::max(rTEnter, t1);
+        rTExit  = std::min(rTExit,  t2);
+        if (rTEnter > rTExit) return false;
+      }
+
+      return true;
+    }
+
     CellUpdater* m_pCellUpdater;
 
     ////////////////////////////////////////////////////////////

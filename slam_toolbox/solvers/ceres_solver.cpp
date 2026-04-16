@@ -192,19 +192,19 @@ void CeresSolver::Compute()
   }
 
   // Fix all poses except those belonging to a non-fixed session.
-  // If non_fixed_session_ids is empty, no extra pinning is applied (only the
-  // first node above is pinned). If non-empty, every node whose session_id is
-  // NOT in the list is pinned as constant.
+  // No extra pinning when remapping is not configured (only first node above
+  // is pinned). When configured, every node whose session_id is NOT in
+  // non_fixed_session_ids is pinned as constant.
   if (smapper_)
   {
-    const auto& non_fixed = smapper_->getNonFixedSessionIds();
-    if (!non_fixed.empty())
+    const auto& remapping = smapper_->getRemapping();
+    if (remapping)
     {
       for (auto& [id, vec] : *nodes_)
       {
         const slam_toolbox::SessionLabel* label = smapper_->getLabel(id);
         const int session_id = label ? label->session_id : -1;
-        if (non_fixed.count(session_id) == 0)
+        if (remapping->non_fixed_session_ids.count(session_id) == 0)
         {
           problem_->SetParameterBlockConstant(&vec(0));
           problem_->SetParameterBlockConstant(&vec(1));

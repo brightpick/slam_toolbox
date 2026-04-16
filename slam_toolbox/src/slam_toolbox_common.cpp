@@ -183,17 +183,52 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
   smapper_->setSessionLabel(session_label);
   ROS_INFO("SlamToolbox: session_label = %s", YAML::Dump(session_label.serialize()).c_str());
 
-  XmlRpc::XmlRpcValue xml_non_fixed;
-  if (private_nh.getParam("non_fixed_session_ids", xml_non_fixed) &&
-      xml_non_fixed.getType() == XmlRpc::XmlRpcValue::TypeArray)
+  XmlRpc::XmlRpcValue xml_remapping;
+  if (private_nh.getParam("remapping", xml_remapping) &&
+      xml_remapping.getType() == XmlRpc::XmlRpcValue::TypeStruct)
   {
-    std::unordered_set<int> ids;
-    for (int i = 0; i < xml_non_fixed.size(); ++i)
+    mapper_utils::SMapper::RemappingConfig cfg;
+    bool ids_set = false;
+    bool bbox_set = false;
+
+    if (xml_remapping.hasMember("non_fixed_session_ids") &&
+        xml_remapping["non_fixed_session_ids"].getType() == XmlRpc::XmlRpcValue::TypeArray)
     {
-      ids.insert(static_cast<int>(xml_non_fixed[i]));
+      XmlRpc::XmlRpcValue& xml_ids = xml_remapping["non_fixed_session_ids"];
+      for (int i = 0; i < xml_ids.size(); ++i)
+      {
+        cfg.non_fixed_session_ids.insert(static_cast<int>(xml_ids[i]));
+      }
+      ids_set = !cfg.non_fixed_session_ids.empty();
     }
-    ROS_INFO("SlamToolbox: non_fixed_session_ids has %zu entries", ids.size());
-    smapper_->setNonFixedSessionIds(ids);
+
+    if (xml_remapping.hasMember("bbox") &&
+        xml_remapping["bbox"].getType() == XmlRpc::XmlRpcValue::TypeArray &&
+        xml_remapping["bbox"].size() == 4)
+    {
+      XmlRpc::XmlRpcValue& xml_bbox = xml_remapping["bbox"];
+      const double x1 = static_cast<double>(xml_bbox[0]);
+      const double y1 = static_cast<double>(xml_bbox[1]);
+      const double x2 = static_cast<double>(xml_bbox[2]);
+      const double y2 = static_cast<double>(xml_bbox[3]);
+      cfg.bbox.SetMinimum(karto::Vector2<kt_double>(x1, y1));
+      cfg.bbox.SetMaximum(karto::Vector2<kt_double>(x2, y2));
+      bbox_set = true;
+    }
+
+    if (ids_set && bbox_set)
+    {
+      ROS_INFO("SlamToolbox: remapping configured — %zu session IDs, bbox [%.3f, %.3f, %.3f, %.3f]",
+               cfg.non_fixed_session_ids.size(),
+               cfg.bbox.GetMinimum().GetX(), cfg.bbox.GetMinimum().GetY(),
+               cfg.bbox.GetMaximum().GetX(), cfg.bbox.GetMaximum().GetY());
+      smapper_->setRemapping(std::move(cfg));
+    }
+    else
+    {
+      ROS_WARN("SlamToolbox: remapping section found but incomplete — "
+               "both non_fixed_session_ids and bbox are required; remapping disabled");
+    }
   }
 }
 
