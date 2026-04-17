@@ -2174,6 +2174,9 @@ namespace karto
     MapperGraph* m_pGraph;
     ScanSolver* m_pScanOptimizer;
     LoopClosureCandidateSelector* m_pPendingCandidateSelector;
+    // Persistent reference to the selector; survives deserialization cycles so
+    // Initialize() can re-apply it to the freshly-deserialized graph.
+    LoopClosureCandidateSelector* m_pCurrentSelector;
     LocalizationScanVertices m_LocalizationScanVertices;
 
 

@@ -2060,7 +2060,8 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr)
+    m_pPendingCandidateSelector(nullptr),
+    m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2076,7 +2077,8 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr)
+    m_pPendingCandidateSelector(nullptr),
+    m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2637,9 +2639,15 @@ namespace karto
       m_pGraph = new MapperGraph(this, rangeThreshold);
     }
 
-    if (m_pPendingCandidateSelector)
+    // Apply the selector from the pending slot (first-time init) or from the
+    // persistent reference (re-init after deserialization, where pending was
+    // already consumed by the primer-scan Initialize() call and the deserialized
+    // graph arrives with m_pCandidateSelector == nullptr).
+    LoopClosureCandidateSelector* selectorToApply =
+        m_pPendingCandidateSelector ? m_pPendingCandidateSelector : m_pCurrentSelector;
+    if (selectorToApply)
     {
-      m_pGraph->SetCandidateSelector(m_pPendingCandidateSelector);
+      m_pGraph->SetCandidateSelector(selectorToApply);
       m_pPendingCandidateSelector = nullptr;
     }
 
@@ -3303,6 +3311,7 @@ namespace karto
 
   void Mapper::SetCandidateSelector(LoopClosureCandidateSelector* pSelector)
   {
+    m_pCurrentSelector = pSelector;
     if (m_pGraph)
     {
       m_pGraph->SetCandidateSelector(pSelector);

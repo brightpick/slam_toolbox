@@ -38,6 +38,8 @@ namespace karto
       const LocalizedRangeScanVector& rNearLinkedScans,
       kt_int32u& rStartNum) override;
 
+    void setMapper(const Mapper* pMapper) override { m_pMapper = pMapper; }
+
   private:
     const Mapper* m_pMapper;
   };

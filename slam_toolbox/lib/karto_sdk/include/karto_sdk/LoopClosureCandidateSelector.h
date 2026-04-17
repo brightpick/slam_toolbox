@@ -22,6 +22,8 @@
 
 namespace karto
 {
+  class Mapper;
+
   /**
    * Abstract interface for loop closure candidate selection heuristics.
    * Implementations return a chain of candidate scans for one loop closure
@@ -46,6 +48,14 @@ namespace karto
       const LocalizedRangeScanMap& rAllScans,
       const LocalizedRangeScanVector& rNearLinkedScans,
       kt_int32u& rStartNum) = 0;
+
+    /**
+     * Called when the underlying Mapper object is replaced (e.g. after
+     * posegraph deserialization). Implementations that cache a Mapper pointer
+     * must override this to update their internal reference; the default
+     * no-op is safe for selectors that do not hold a Mapper pointer.
+     */
+    virtual void setMapper(const Mapper* /*pMapper*/) {}
   };
 
 }  // namespace karto

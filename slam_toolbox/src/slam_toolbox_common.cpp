@@ -765,6 +765,15 @@ void SlamToolbox::loadSerializedPoseGraph(
   smapper_->configure(nh_);
   dataset_.reset(dataset.release());
 
+  // The mapper object was just replaced. Any selector holding a raw Mapper*
+  // must update its pointer, and the selector must be re-registered on the
+  // new mapper's graph so it is not null when loop closure runs.
+  if (candidate_selector_)
+  {
+    candidate_selector_->setMapper(smapper_->getMapper());
+    smapper_->setCandidateSelector(candidate_selector_.get());
+  }
+
   closure_assistant_->setMapper(smapper_->getMapper());
 
   if (!smapper_->getMapper())
