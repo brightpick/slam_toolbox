@@ -191,25 +191,16 @@ void CeresSolver::Compute()
     was_constant_set_ = !was_constant_set_;
   }
 
-  // Fix all poses except those belonging to a non-fixed session.
-  // No extra pinning when remapping is not configured (only first node above
-  // is pinned). When configured, every node whose session_id is NOT in
-  // non_fixed_session_ids is pinned as constant.
-  if (smapper_)
+  // Pin nodes that the caller marked as fixed (e.g. all non-remapping nodes).
+  if (is_node_fixed_)
   {
-    const auto& remapping = smapper_->getRemapping();
-    if (remapping)
+    for (auto& [id, vec] : *nodes_)
     {
-      for (auto& [id, vec] : *nodes_)
+      if (is_node_fixed_(id))
       {
-        const slam_toolbox::SessionLabel* label = smapper_->getLabel(id);
-        const int session_id = label ? label->session_id : -1;
-        if (remapping->non_fixed_session_ids.count(session_id) == 0)
-        {
-          problem_->SetParameterBlockConstant(&vec(0));
-          problem_->SetParameterBlockConstant(&vec(1));
-          problem_->SetParameterBlockConstant(&vec(2));
-        }
+        problem_->SetParameterBlockConstant(&vec(0));
+        problem_->SetParameterBlockConstant(&vec(1));
+        problem_->SetParameterBlockConstant(&vec(2));
       }
     }
   }
@@ -295,10 +286,10 @@ void CeresSolver::Reset()
 }
 
 /*****************************************************************************/
-void CeresSolver::setMapper(const mapper_utils::SMapper* smapper)
+void CeresSolver::setNodeFixedPredicate(std::function<bool(int)> fn)
 /*****************************************************************************/
 {
-  smapper_ = smapper;
+  is_node_fixed_ = std::move(fn);
 }
 
 /*****************************************************************************/

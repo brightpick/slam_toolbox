@@ -20,7 +20,6 @@
 
 #include "slam_toolbox/slam_toolbox_common.hpp"
 #include "slam_toolbox/serialization.hpp"
-#include "slam_toolbox/mapper_aware_solver.hpp"
 
 namespace slam_toolbox
 {
@@ -133,11 +132,13 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
 
-  auto* mapper_aware = dynamic_cast<slam_toolbox::IMapperAwareSolver*>(solver_.get());
-  if (mapper_aware)
-  {
-    mapper_aware->setMapper(smapper_.get());
-  }
+  // Tell the solver how to identify nodes that must stay fixed during
+  // optimisation.  The predicate captures smapper_ by pointer — valid for
+  // the lifetime of the toolbox.
+  solver_->setNodeFixedPredicate(
+    [this](int id) {
+      return smapper_->getRemapping().has_value() && !smapper_->isRemappingNode(id);
+    });
 }
 
 /*****************************************************************************/

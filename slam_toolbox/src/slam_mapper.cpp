@@ -69,15 +69,13 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
 
-  return karto::OccupancyGrid::CreateFromScansFiltered(
+  return karto::OccupancyGrid::CreateFromScans(
     scans,
     resolution,
-    remapping_->bbox,
+    &remapping_->bbox,
     [this](karto::LocalizedRangeScan* pScan) -> kt_bool
     {
-      const slam_toolbox::SessionLabel* label = getLabel(pScan->GetUniqueId());
-      const int session_id = label ? label->session_id : -1;
-      return remapping_->non_fixed_session_ids.count(session_id) > 0;
+      return isRemappingNode(pScan->GetUniqueId());
     });
 }
 
@@ -93,6 +91,16 @@ const std::optional<SMapper::RemappingConfig>& SMapper::getRemapping() const
 /*****************************************************************************/
 {
   return remapping_;
+}
+
+/*****************************************************************************/
+bool SMapper::isRemappingNode(int unique_id) const
+/*****************************************************************************/
+{
+  if (!remapping_) return false;
+  const slam_toolbox::SessionLabel* label = getLabel(unique_id);
+  const int session_id = label ? label->session_id : -1;
+  return remapping_->non_fixed_session_ids.count(session_id) > 0;
 }
 
 /*****************************************************************************/

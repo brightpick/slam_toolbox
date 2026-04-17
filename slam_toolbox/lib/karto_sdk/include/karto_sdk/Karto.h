@@ -4947,7 +4947,18 @@ namespace karto
      * @param y1
      * @param f
      */
-    void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1, Functor* f = NULL)
+    /**
+     * Increments all the grid cells from (x0, y0) to (x1, y1);
+     * if applicable, apply f to each cell traced.
+     *
+     * When pBounds is non-null it points to [minX, minY, maxX, maxY] in grid
+     * coordinates.  Only cells whose inside/outside status matches allowInside
+     * are incremented; the Bresenham stepping is unchanged so no single-pixel
+     * divergence artefacts appear.
+     */
+    void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1,
+                   Functor* f = NULL,
+                   const kt_int32s* pBounds = nullptr, kt_bool allowInside = false)
     {
       kt_bool steep = abs(y1 - y0) > abs(x1 - x0);
       if (steep)
@@ -4997,6 +5008,13 @@ namespace karto
         {
           y += ystep;
           error -= deltaX;
+        }
+
+        if (pBounds)
+        {
+          const kt_bool inside = pointX >= pBounds[0] && pointX <= pBounds[2] &&
+                                 pointY >= pBounds[1] && pointY <= pBounds[3];
+          if (inside != allowInside) continue;
         }
 
         Vector2<kt_int32s> gridIndex(pointX, pointY);
@@ -6059,40 +6077,19 @@ namespace karto
      * @param rScans
      * @param resolution
      */
-    static OccupancyGrid* CreateFromScans(const LocalizedRangeScanVector& rScans, kt_double resolution)
-    {
-      if (rScans.empty())
-      {
-        return NULL;
-      }
-
-      kt_int32s width, height;
-      Vector2<kt_double> offset;
-      ComputeDimensions(rScans, resolution, width, height, offset);
-      OccupancyGrid* pOccupancyGrid = new OccupancyGrid(width, height, offset, resolution);
-      pOccupancyGrid->CreateFromScans(rScans);
-
-      return pOccupancyGrid;
-    }
-
     /**
-     * Create an occupancy grid from scans with per-scan spatial filtering.
+     * Create an occupancy grid from the given scans using the given resolution.
      *
-     * Scans for which fnIsRemapping returns true may only draw INSIDE rFilterBbox;
-     * scans returning false may only draw OUTSIDE rFilterBbox. Rays are clipped at
-     * the bounding box boundary rather than skipped entirely, so free-space along
-     * the allowed segment is still correctly marked.
-     *
-     * @param rScans        all processed scans
-     * @param resolution    map resolution
-     * @param rFilterBbox   the remapped-area bounding box (world coordinates)
-     * @param fnIsRemapping predicate — returns true for remapping-session scans
+     * When pFilterBbox and fnIsRemapping are provided, per-scan spatial filtering
+     * is applied: remapping-session scans may only draw INSIDE the bbox; fixed
+     * scans may only draw OUTSIDE.  The Bresenham stepping is identical to an
+     * unfiltered trace, preventing single-pixel divergence artefacts.
      */
-    static OccupancyGrid* CreateFromScansFiltered(
+    static OccupancyGrid* CreateFromScans(
         const LocalizedRangeScanVector& rScans,
         kt_double resolution,
-        const BoundingBox2& rFilterBbox,
-        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping)
+        const BoundingBox2* pFilterBbox = nullptr,
+        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping = nullptr)
     {
       if (rScans.empty())
       {
@@ -6102,23 +6099,10 @@ namespace karto
       kt_int32s width, height;
       Vector2<kt_double> offset;
       ComputeDimensions(rScans, resolution, width, height, offset);
+      OccupancyGrid* pOccupancyGrid = new OccupancyGrid(width, height, offset, resolution);
+      pOccupancyGrid->CreateFromScans(rScans, pFilterBbox, fnIsRemapping);
 
-      OccupancyGrid* pGrid = new OccupancyGrid(width, height, offset, resolution);
-      pGrid->m_pCellPassCnt->Resize(pGrid->GetWidth(), pGrid->GetHeight());
-      pGrid->m_pCellPassCnt->GetCoordinateConverter()->SetOffset(
-        pGrid->GetCoordinateConverter()->GetOffset());
-      pGrid->m_pCellHitsCnt->Resize(pGrid->GetWidth(), pGrid->GetHeight());
-      pGrid->m_pCellHitsCnt->GetCoordinateConverter()->SetOffset(
-        pGrid->GetCoordinateConverter()->GetOffset());
-
-      for (LocalizedRangeScan* pScan : rScans)
-      {
-        if (!pScan) continue;
-        pGrid->AddScan(pScan, rFilterBbox, fnIsRemapping(pScan));
-      }
-
-      pGrid->Update();
-      return pGrid;
+      return pOccupancyGrid;
     }
 
     /**
@@ -6280,7 +6264,10 @@ namespace karto
      * Create grid using scans
      * @param rScans
      */
-    virtual void CreateFromScans(const LocalizedRangeScanVector& rScans)
+    virtual void CreateFromScans(
+        const LocalizedRangeScanVector& rScans,
+        const BoundingBox2* pFilterBbox = nullptr,
+        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping = nullptr)
     {
       m_pCellPassCnt->Resize(GetWidth(), GetHeight());
       m_pCellPassCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
@@ -6288,15 +6275,18 @@ namespace karto
       m_pCellHitsCnt->Resize(GetWidth(), GetHeight());
       m_pCellHitsCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
 
-      const_forEach(LocalizedRangeScanVector, &rScans)
+      for (LocalizedRangeScan* pScan : rScans)
       {
-        if (*iter == nullptr)
-        {
-          continue;
-        }
+        if (!pScan) continue;
 
-        LocalizedRangeScan* pScan = *iter;
-        AddScan(pScan);
+        if (pFilterBbox && fnIsRemapping)
+        {
+          AddScan(pScan, false, pFilterBbox, fnIsRemapping(pScan));
+        }
+        else
+        {
+          AddScan(pScan);
+        }
       }
 
       Update();
@@ -6309,71 +6299,24 @@ namespace karto
      * @param doUpdate whether to update the grid's cell's occupancy status
      * @return returns false if an endpoint fell off the grid, otherwise true
      */
-    virtual kt_bool AddScan(LocalizedRangeScan* pScan, kt_bool doUpdate = false)
-    {
-      LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
-      kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
-      kt_double maxRange = laserRangeFinder->GetMaximumRange();
-      kt_double minRange = laserRangeFinder->GetMinimumRange();
-
-      Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
-      // get scan point readings
-      const PointVectorDouble& rPointReadings = pScan->GetPointReadings(false);
-
-      kt_bool isAllInMap = true;
-
-      // draw lines from scan position to all point readings
-      int pointIndex = 0;
-      const_forEachAs(PointVectorDouble, &rPointReadings, pointsIter)
-      {
-        Vector2<kt_double> point = *pointsIter;
-        kt_double rangeReading = pScan->GetRangeReadings()[pointIndex];
-        kt_bool isEndPointValid = rangeReading < (rangeThreshold - KT_TOLERANCE);
-
-        if (rangeReading <= minRange || rangeReading >= maxRange || std::isnan(rangeReading))
-        {
-          // ignore these readings
-          pointIndex++;
-          continue;
-        }
-        else if (rangeReading >= rangeThreshold)
-        {
-          // trace up to range reading
-          kt_double ratio = rangeThreshold / rangeReading;
-          kt_double dx = point.GetX() - scanPosition.GetX();
-          kt_double dy = point.GetY() - scanPosition.GetY();
-          point.SetX(scanPosition.GetX() + ratio * dx);
-          point.SetY(scanPosition.GetY() + ratio * dy);
-        }
-
-        kt_bool isInMap = RayTrace(scanPosition, point, isEndPointValid, doUpdate);
-        if (!isInMap)
-        {
-          isAllInMap = false;
-        }
-
-        pointIndex++;
-      }
-
-      return isAllInMap;
-    }
-
     /**
-     * Adds the scan's information to this grid's counters with spatial filtering.
-     * Rays are clipped at the bounding box boundary rather than dropped entirely,
-     * so free-space along the allowed segment is still correctly accumulated.
+     * Adds the scan's information to this grid's counters.
+     *
+     * When pFilterBbox is non-null, a spatial filter is applied: only cells
+     * inside (allowInside=true) or outside (allowInside=false) the bbox are
+     * modified.  The Bresenham stepping is always identical, preventing
+     * single-pixel divergence artefacts.
      *
      * @param pScan        scan to process
-     * @param rFilterBbox  axis-aligned bounding box of the remapped area
-     * @param allowInside  true  → only trace ray portions INSIDE  the bbox (remapping session)
-     *                     false → only trace ray portions OUTSIDE the bbox (fixed session)
      * @param doUpdate     whether to immediately update occupancy values
-     * @return false if any clipped endpoint fell off the grid
+     * @param pFilterBbox  optional axis-aligned bounding box for spatial filtering
+     * @param allowInside  when pFilterBbox set: true → only inside, false → only outside
+     * @return false if any endpoint fell off the grid
      */
     virtual kt_bool AddScan(LocalizedRangeScan* pScan,
-                            const BoundingBox2& rFilterBbox,
-                            kt_bool allowInside,
-                            kt_bool doUpdate = false)
+                            kt_bool doUpdate = false,
+                            const BoundingBox2* pFilterBbox = nullptr,
+                            kt_bool allowInside = false)
     {
       LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
       const kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
@@ -6383,8 +6326,19 @@ namespace karto
       const Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
       const PointVectorDouble& rPointReadings = pScan->GetPointReadings(false);
 
-      const Vector2<kt_double>& bboxMin = rFilterBbox.GetMinimum();
-      const Vector2<kt_double>& bboxMax = rFilterBbox.GetMaximum();
+      // Convert world-space bbox to grid-space once for all rays.
+      const kt_int32s* pBounds = nullptr;
+      kt_int32s bounds[4];
+      if (pFilterBbox)
+      {
+        const Vector2<kt_int32s> gridBboxMin =
+          m_pCellPassCnt->WorldToGrid(pFilterBbox->GetMinimum());
+        const Vector2<kt_int32s> gridBboxMax =
+          m_pCellPassCnt->WorldToGrid(pFilterBbox->GetMaximum());
+        bounds[0] = gridBboxMin.GetX(); bounds[1] = gridBboxMin.GetY();
+        bounds[2] = gridBboxMax.GetX(); bounds[3] = gridBboxMax.GetY();
+        pBounds = bounds;
+      }
 
       kt_bool isAllInMap = true;
       int pointIndex = 0;
@@ -6402,64 +6356,17 @@ namespace karto
         }
         else if (rangeReading >= rangeThreshold)
         {
-          const kt_double ratio = rangeThreshold / rangeReading;
-          const kt_double dx = point.GetX() - scanPosition.GetX();
-          const kt_double dy = point.GetY() - scanPosition.GetY();
+          kt_double ratio = rangeThreshold / rangeReading;
+          kt_double dx = point.GetX() - scanPosition.GetX();
+          kt_double dy = point.GetY() - scanPosition.GetY();
           point.SetX(scanPosition.GetX() + ratio * dx);
           point.SetY(scanPosition.GetY() + ratio * dy);
         }
 
-        kt_double tEnter, tExit;
-        const kt_bool intersects =
-          ClipRayToBox(scanPosition, point, bboxMin, bboxMax, tEnter, tExit);
-
-        if (allowInside)
+        if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate,
+                       pBounds, allowInside))
         {
-          // Trace only the segment inside the bbox
-          if (!intersects)
-          {
-            pointIndex++;
-            continue;  // ray never enters bbox
-          }
-          const Vector2<kt_double> clippedFrom = LerpPoint(scanPosition, point, tEnter);
-          const Vector2<kt_double> clippedTo   = LerpPoint(scanPosition, point, tExit);
-          // Endpoint is valid only when the original endpoint is inside the box
-          const kt_bool clippedEndpointValid = isEndPointValid && (tExit >= 1.0 - KT_TOLERANCE);
-          if (!RayTrace(clippedFrom, clippedTo, clippedEndpointValid, doUpdate))
-          {
-            isAllInMap = false;
-          }
-        }
-        else
-        {
-          // Trace only segment(s) outside the bbox
-          if (!intersects)
-          {
-            // Entire ray is outside bbox — trace normally
-            if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate))
-            {
-              isAllInMap = false;
-            }
-          }
-          else
-          {
-            // First outside segment: [origin → bbox entry]
-            if (tEnter > KT_TOLERANCE)
-            {
-              const Vector2<kt_double> entryPoint = LerpPoint(scanPosition, point, tEnter);
-              RayTrace(scanPosition, entryPoint, false, doUpdate);
-            }
-            // Second outside segment: [bbox exit → endpoint]
-            if (tExit < 1.0 - KT_TOLERANCE)
-            {
-              const Vector2<kt_double> exitPoint = LerpPoint(scanPosition, point, tExit);
-              if (!RayTrace(exitPoint, point, isEndPointValid, doUpdate))
-              {
-                isAllInMap = false;
-              }
-            }
-            // tEnter ≈ 0 and tExit ≈ 1: ray entirely inside bbox — skip
-          }
+          isAllInMap = false;
         }
 
         pointIndex++;
@@ -6477,10 +6384,30 @@ namespace karto
      * @param doUpdate whether to update the cells' occupancy status immediately
      * @return returns false if an endpoint fell off the grid, otherwise true
      */
+    /**
+     * Traces a beam from the start position to the end position marking
+     * the bookkeeping arrays accordingly.
+     *
+     * When pBounds is non-null it points to [minX, minY, maxX, maxY] in grid
+     * coordinates.  Only cells whose inside/outside status matches allowInside
+     * are modified (both pass-through and endpoint hit).  The Bresenham stepping
+     * is always identical regardless of the filter, preventing single-pixel
+     * divergence artefacts.
+     *
+     * @param rWorldFrom start position of beam
+     * @param rWorldTo end position of beam
+     * @param isEndPointValid is the reading within the range threshold?
+     * @param doUpdate whether to update the cells' occupancy status immediately
+     * @param pBounds optional grid-space bbox filter [minX, minY, maxX, maxY]
+     * @param allowInside when pBounds set: true → only inside, false → only outside
+     * @return returns false if an endpoint fell off the grid, otherwise true
+     */
     virtual kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
                              const Vector2<kt_double>& rWorldTo,
                              kt_bool isEndPointValid,
-                             kt_bool doUpdate = false)
+                             kt_bool doUpdate = false,
+                             const kt_int32s* pBounds = nullptr,
+                             kt_bool allowInside = false)
     {
       assert(m_pCellPassCnt != NULL && m_pCellHitsCnt != NULL);
 
@@ -6488,13 +6415,28 @@ namespace karto
       Vector2<kt_int32s> gridTo = m_pCellPassCnt->WorldToGrid(rWorldTo);
 
       CellUpdater* pCellUpdater = doUpdate ? m_pCellUpdater : NULL;
-      m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(), gridTo.GetX(), gridTo.GetY(), pCellUpdater);
+      m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(),
+                                gridTo.GetX(), gridTo.GetY(),
+                                pCellUpdater, pBounds, allowInside);
 
       // for the end point
       if (isEndPointValid)
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
+          // Check spatial filter for endpoint
+          if (pBounds)
+          {
+            const kt_int32s ex = gridTo.GetX();
+            const kt_int32s ey = gridTo.GetY();
+            const kt_bool inside = ex >= pBounds[0] && ex <= pBounds[2] &&
+                                   ey >= pBounds[1] && ey <= pBounds[3];
+            if (inside != allowInside)
+            {
+              return m_pCellPassCnt->IsValidGridIndex(gridTo);
+            }
+          }
+
           kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
 
           kt_int32u* pCellPassCntPtr = m_pCellPassCnt->GetDataPointer();
@@ -6592,75 +6534,6 @@ namespace karto
      * Restrict the assignment operator
      */
     const OccupancyGrid& operator=(const OccupancyGrid&);
-
-  private:
-    /**
-     * Linear interpolation between two world points.
-     * @param t  parameter in [0, 1]: 0 → rFrom, 1 → rTo
-     */
-    static Vector2<kt_double> LerpPoint(const Vector2<kt_double>& rFrom,
-                                        const Vector2<kt_double>& rTo,
-                                        kt_double t)
-    {
-      return Vector2<kt_double>(
-        rFrom.GetX() + t * (rTo.GetX() - rFrom.GetX()),
-        rFrom.GetY() + t * (rTo.GetY() - rFrom.GetY()));
-    }
-
-    /**
-     * Slab-method AABB line clip (Liang-Barsky).
-     *
-     * Clips the segment [rFrom, rTo] (parametrised as rFrom + t*(rTo-rFrom), t∈[0,1])
-     * against the axis-aligned box [rBboxMin, rBboxMax].
-     *
-     * @param rTEnter  on success: t where the segment enters the box (≥ 0)
-     * @param rTExit   on success: t where the segment exits  the box (≤ 1)
-     * @return true if the segment intersects the box
-     */
-    static kt_bool ClipRayToBox(const Vector2<kt_double>& rFrom,
-                                const Vector2<kt_double>& rTo,
-                                const Vector2<kt_double>& rBboxMin,
-                                const Vector2<kt_double>& rBboxMax,
-                                kt_double& rTEnter,
-                                kt_double& rTExit)
-    {
-      const kt_double dx = rTo.GetX() - rFrom.GetX();
-      const kt_double dy = rTo.GetY() - rFrom.GetY();
-      rTEnter = 0.0;
-      rTExit  = 1.0;
-
-      // X slab
-      if (std::abs(dx) < KT_TOLERANCE)
-      {
-        if (rFrom.GetX() < rBboxMin.GetX() || rFrom.GetX() > rBboxMax.GetX()) return false;
-      }
-      else
-      {
-        kt_double t1 = (rBboxMin.GetX() - rFrom.GetX()) / dx;
-        kt_double t2 = (rBboxMax.GetX() - rFrom.GetX()) / dx;
-        if (t1 > t2) std::swap(t1, t2);
-        rTEnter = std::max(rTEnter, t1);
-        rTExit  = std::min(rTExit,  t2);
-        if (rTEnter > rTExit) return false;
-      }
-
-      // Y slab
-      if (std::abs(dy) < KT_TOLERANCE)
-      {
-        if (rFrom.GetY() < rBboxMin.GetY() || rFrom.GetY() > rBboxMax.GetY()) return false;
-      }
-      else
-      {
-        kt_double t1 = (rBboxMin.GetY() - rFrom.GetY()) / dy;
-        kt_double t2 = (rBboxMax.GetY() - rFrom.GetY()) / dy;
-        if (t1 > t2) std::swap(t1, t2);
-        rTEnter = std::max(rTEnter, t1);
-        rTExit  = std::min(rTExit,  t2);
-        if (rTEnter > rTExit) return false;
-      }
-
-      return true;
-    }
 
     CellUpdater* m_pCellUpdater;
 

@@ -1,6 +1,6 @@
 /*
  * Tests for the remapping bounding-box filter:
- *   - OccupancyGrid::AddScan (filtered overload) / CreateFromScansFiltered
+ *   - OccupancyGrid::AddScan (filtered overload) / CreateFromScans (filtered)
  *   - SMapper::setRemapping / getOccupancyGrid session routing
  *
  * Suite A  (OccupancyGridFilterTest)  — pure karto, no ROS; exercises ray-clip geometry
@@ -87,7 +87,7 @@ karto::BoundingBox2 makeBbox(double x1, double y1, double x2, double y2)
 }
 
 // Return a vector with three pointers to the same scan.
-// CreateFromScansFiltered calls AddScan once per entry, so three entries
+// CreateFromScans (filtered) calls AddScan once per entry, so three entries
 // gives passCount=6 at the endpoint — enough to exceed MinPassThrough=2.
 karto::LocalizedRangeScanVector tripled(karto::LocalizedRangeScan* scan)
 {
@@ -109,7 +109,7 @@ constexpr double kResolution = 0.1;
 // ═════════════════════════════════════════════════════════════════════════════
 // Suite A — OccupancyGrid ray-clip geometry
 //
-// All tests call CreateFromScansFiltered directly with a fixed predicate so
+// All tests call CreateFromScans (filtered) directly with a fixed predicate so
 // the session layer is bypassed and the geometry is tested in isolation.
 //
 // Each test uses withAnchor(scan) which appends a far-away anchor scan at
@@ -160,7 +160,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_RayFullyInside_EndpointOccupied)
   // Sensor (3, 0), range 1.5 → central endpoint (4.5, 0) — both inside box
   auto* scan = makeScan(0, 3.0, 0.0, 1.5, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 4.5, 0.0), karto::GridStates_Occupied);
@@ -174,7 +174,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_RayFullyOutside_NothingTraced)
   // Sensor (−2, 0), range 1.0 → central endpoint (−1, 0) — both outside
   auto* scan = makeScan(0, -2.0, 0.0, 1.0, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), -1.0, 0.0), karto::GridStates_Unknown);
@@ -189,7 +189,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_RayEntersBox_OnlyInsideSegmentTraced
   // Sensor (0, 0), range 3.5 → central endpoint (3.5, 0) — inside box; sensor outside
   auto* scan = makeScan(0, 0.0, 0.0, 3.5, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 3.5, 0.0), karto::GridStates_Occupied); // inside bbox
@@ -205,7 +205,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_RayPassesThrough_InsideFreeEndpointU
   // Sensor (0, 0), range 8.0 → central endpoint (8, 0) — both outside; crosses [2, 6]
   auto* scan = makeScan(0, 0.0, 0.0, 8.0, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 4.0, 0.0), karto::GridStates_Free);    // inside box, traced as free
@@ -223,7 +223,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_RayFullyOutside_EndpointOccupied)
   // Sensor (−2, 0), range 1.0 → central endpoint (−1, 0) — both outside
   auto* scan = makeScan(0, -2.0, 0.0, 1.0, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), -1.0, 0.0), karto::GridStates_Occupied);
@@ -238,7 +238,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_RayEntersBox_InsideUntouched)
   // Sensor (0, 0), range 3.5 → central endpoint (3.5, 0) — inside box
   auto* scan = makeScan(0, 0.0, 0.0, 3.5, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 3.5, 0.0), karto::GridStates_Unknown); // inside bbox, not drawn
@@ -254,7 +254,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_RayPassesThrough_InsideSkippedEndpo
   // Sensor (0, 0), range 8.0 → central endpoint (8, 0) — both outside; crosses [2, 6]
   auto* scan = makeScan(0, 0.0, 0.0, 8.0, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 8.0, 0.0), karto::GridStates_Occupied); // endpoint outside, traced
@@ -270,7 +270,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_RayFullyInside_NothingTraced)
   // Sensor (3, 0), range 1.5 → central endpoint (4.5, 0) — both inside box
   auto* scan = makeScan(0, 3.0, 0.0, 1.5, kLaser);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 4.5, 0.0), karto::GridStates_Unknown);
@@ -287,7 +287,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_YAxisRay_EndpointOccupied)
   // Sensor (3, −3), heading π/2, range 3.5 → central endpoint (3, 0.5) — inside box
   auto* scan = makeScan(0, 3.0, -3.0, 3.5, kLaser, M_PI / 2.0);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 3.0, 0.5),  karto::GridStates_Occupied); // endpoint inside bbox
@@ -303,7 +303,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_YAxisRayPassesThrough_InsideFreeEndp
   // Sensor (3, −3), heading π/2, range 8.0 → central endpoint (3, 5.0) — outside box
   auto* scan = makeScan(0, 3.0, -3.0, 8.0, kLaser, M_PI / 2.0);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 3.0,  0.0), karto::GridStates_Free);    // inside bbox, traced as free
@@ -320,7 +320,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_YAxisRayPassesThrough_InsideSkipped
   // Sensor (3, 3), heading −π/2, range 8.0 → central endpoint (3, −5.0) — outside box
   auto* scan = makeScan(0, 3.0, 3.0, 8.0, kLaser, -M_PI / 2.0);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 3.0, -5.0), karto::GridStates_Occupied); // endpoint outside, traced
@@ -358,7 +358,7 @@ TEST_F(OccupancyGridFilterTest, AllowInside_DiagonalRay_XEntryYExit_InsideFreeEn
 {
   auto* scan = makeScan(0, 0.0, -2.0, 8.0, kLaser, M_PI / 4.0);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowInside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowInside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(),  2.5,  0.5),  karto::GridStates_Free);    // inside clip segment — free
@@ -379,7 +379,7 @@ TEST_F(OccupancyGridFilterTest, AllowOutside_DiagonalRay_XEntryYExit_InsideSkipp
 {
   auto* scan = makeScan(0, 0.0, -2.0, 8.0, kLaser, M_PI / 4.0);
   auto grid = std::unique_ptr<karto::OccupancyGrid>(
-    karto::OccupancyGrid::CreateFromScansFiltered(withAnchor(scan), kResolution, bbox_, kAllowOutside));
+    karto::OccupancyGrid::CreateFromScans(withAnchor(scan), kResolution, &bbox_, kAllowOutside));
 
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(),  5.66,  3.66), karto::GridStates_Occupied); // second outside endpoint
@@ -430,7 +430,7 @@ protected:
   // Helper: configure remapping with the shared bbox and the given session IDs.
   // Also adds an anchor scan in a far-away fixed session (session_id=kAnchorSessionId)
   // to extend the grid boundary, ensuring test scan endpoints never fall at the
-  // grid maximum (same boundary issue as Suite A — CreateFromScansFiltered has no
+  // grid maximum (same boundary issue as Suite A — CreateFromScans (filtered) has no
   // built-in padding, consistent with CreateFromScans).
   void setRemapping(std::unordered_set<int> ids)
   {

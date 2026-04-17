@@ -2060,7 +2060,6 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr),
     m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
@@ -2077,7 +2076,6 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr),
     m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
@@ -2639,16 +2637,9 @@ namespace karto
       m_pGraph = new MapperGraph(this, rangeThreshold);
     }
 
-    // Apply the selector from the pending slot (first-time init) or from the
-    // persistent reference (re-init after deserialization, where pending was
-    // already consumed by the primer-scan Initialize() call and the deserialized
-    // graph arrives with m_pCandidateSelector == nullptr).
-    LoopClosureCandidateSelector* selectorToApply =
-        m_pPendingCandidateSelector ? m_pPendingCandidateSelector : m_pCurrentSelector;
-    if (selectorToApply)
+    if (m_pCurrentSelector)
     {
-      m_pGraph->SetCandidateSelector(selectorToApply);
-      m_pPendingCandidateSelector = nullptr;
+      m_pGraph->SetCandidateSelector(m_pCurrentSelector);
     }
 
     m_Initialized = true;
@@ -3316,11 +3307,7 @@ namespace karto
     {
       m_pGraph->SetCandidateSelector(pSelector);
     }
-    else
-    {
-      // Graph not yet created (Initialize() not called yet); store for later.
-      m_pPendingCandidateSelector = pSelector;
-    }
+    // If graph doesn't exist yet, Initialize() will apply m_pCurrentSelector.
   }
 
   ScanSolver* Mapper::getScanSolver()

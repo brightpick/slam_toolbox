@@ -12,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <functional>
 
 #include <karto_sdk/Mapper.h>
 #include <ceres/ceres.h>
@@ -20,8 +21,6 @@
 #include <math.h>
 
 #include "../include/slam_toolbox/toolbox_types.hpp"
-#include "../include/slam_toolbox/slam_mapper.hpp"
-#include "../include/slam_toolbox/mapper_aware_solver.hpp"
 #include "ceres_utils.h"
 
 namespace solver_plugins
@@ -29,7 +28,7 @@ namespace solver_plugins
 
 using namespace ::toolbox_types;
 
-class CeresSolver : public karto::ScanSolver, public slam_toolbox::IMapperAwareSolver
+class CeresSolver : public karto::ScanSolver
 {
 public:
   CeresSolver();
@@ -50,7 +49,7 @@ public:
   virtual void ModifyNode(const int& unique_id, Eigen::Vector3d pose); // change a node's pose
   virtual void GetNodeOrientation(const int& unique_id, double& pose); // get a node's current pose yaw
 
-  void setMapper(const mapper_utils::SMapper* smapper) override;
+  void setNodeFixedPredicate(std::function<bool(int)> fn) override;
 
 private:
   // karto
@@ -70,7 +69,8 @@ private:
   std::unordered_map<int, Eigen::Vector3d>::iterator first_node_;
   boost::mutex nodes_mutex_;
 
-  const mapper_utils::SMapper* smapper_{nullptr};
+  // When set, returns true for nodes that should be held constant
+  std::function<bool(int)> is_node_fixed_;
 };
 
 }

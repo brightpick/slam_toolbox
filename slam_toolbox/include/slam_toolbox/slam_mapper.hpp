@@ -88,6 +88,10 @@ public:
 
   const std::optional<RemappingConfig>& getRemapping() const;
 
+  // Returns true if the node belongs to a remapping session (its session_id
+  // is in non_fixed_session_ids). Returns false when remapping is not configured.
+  bool isRemappingNode(int unique_id) const;
+
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
 

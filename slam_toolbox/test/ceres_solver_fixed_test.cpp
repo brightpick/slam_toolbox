@@ -124,7 +124,10 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;
-  solver.setMapper(&smapper);
+  solver.setNodeFixedPredicate(
+    [&smapper](int id) {
+      return smapper.getRemapping().has_value() && !smapper.isRemappingNode(id);
+    });
 
   // AddNode order: node 0 first so it becomes first_node_
   solver.AddNode(v0);
@@ -206,7 +209,10 @@ TEST(CeresSolverFixedPoseTest, EmptyNonFixedListOnlyPinsFirstNode)
   // non_fixed_session_ids left empty (default)
 
   solver_plugins::CeresSolver solver;
-  solver.setMapper(&smapper);
+  solver.setNodeFixedPredicate(
+    [&smapper](int id) {
+      return smapper.getRemapping().has_value() && !smapper.isRemappingNode(id);
+    });
 
   solver.AddNode(v0);
   solver.AddNode(v1);
