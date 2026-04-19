@@ -1653,6 +1653,7 @@ namespace karto
           m_pMapper->FireEndLoopClosure("Loop closed!");
 
           loopClosed = true;
+          }
         }
       }
 
