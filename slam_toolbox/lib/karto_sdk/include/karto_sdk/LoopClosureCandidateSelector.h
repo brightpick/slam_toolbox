@@ -18,6 +18,7 @@
 #ifndef karto_sdk_LOOP_CLOSURE_CANDIDATE_SELECTOR_H
 #define karto_sdk_LOOP_CLOSURE_CANDIDATE_SELECTOR_H
 
+#include <functional>
 #include <karto_sdk/Karto.h>
 
 namespace karto
@@ -56,6 +57,19 @@ namespace karto
      * no-op is safe for selectors that do not hold a Mapper pointer.
      */
     virtual void setMapper(const Mapper* /*pMapper*/) {}
+
+    /**
+     * Set an optional predicate that returns true when a candidate scan
+     * should be skipped (e.g. because it no longer owns its grid region
+     * after a more recent remapping session claimed the area).
+     */
+    void setCandidateFilter(std::function<bool(LocalizedRangeScan*)> fn)
+    {
+      candidate_filter_ = std::move(fn);
+    }
+
+  protected:
+    std::function<bool(LocalizedRangeScan*)> candidate_filter_;
   };
 
 }  // namespace karto

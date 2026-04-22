@@ -19,6 +19,9 @@
 /* Author: Steven Macenski */
 
 #include "slam_toolbox/slam_mapper.hpp"
+#include "slam_toolbox/polygon_fill.hpp"
+#include <algorithm>
+#include <map>
 
 namespace mapper_utils
 {
@@ -27,7 +30,7 @@ namespace mapper_utils
 SMapper::SMapper()
 /*****************************************************************************/
 {
-  mapper_ = std::make_unique<karto::Mapper>(); 
+  mapper_ = std::make_unique<karto::Mapper>();
 }
 
 /*****************************************************************************/
@@ -69,21 +72,80 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
 
-  return karto::OccupancyGrid::CreateFromScans(
-    scans,
-    resolution,
-    &remapping_->bbox,
-    [this](karto::LocalizedRangeScan* pScan) -> kt_bool
+  // Compute grid dimensions from BASE-SESSION scans only — scans that belong
+  // to the current remapping session are excluded.  This keeps the occupancy
+  // grid's footprint and origin locked to the previously-saved map, so the
+  // remap output slots into the old PGM pixel-for-pixel.  Growing the grid
+  // would shift its origin (sub-pixel), which ripples into Bresenham
+  // differences on every cell and makes the diff outside the polygon look
+  // noisy even though the filter is working.
+  karto::LocalizedRangeScanVector base_scans;
+  base_scans.reserve(scans.size());
+  for (auto* s : scans)
+  {
+    const slam_toolbox::SessionLabel* label = getLabel(s->GetUniqueId());
+    const int sid = label ? label->session_id : 0;
+    if (sid != remapping_->current_session_id)
     {
-      return isRemappingNode(pScan->GetUniqueId());
+      base_scans.push_back(s);
+    }
+  }
+  kt_int32s width, height;
+  karto::Vector2<kt_double> offset;
+  karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
+  buildOwnershipImage(width, height, offset, resolution);
+
+  // Construct the grid directly with the base-scan bounds, then render ALL
+  // scans through the ownership filter.  Do NOT use the static
+  // CreateFromScans(scans,...) — that path internally calls ComputeDimensions
+  // on the full scan vector, which would re-grow the footprint and shift the
+  // origin sub-pixel.
+  auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
+  result->CreateFromScans(
+    scans,
+    ownership_image_.get(),
+    [this](karto::LocalizedRangeScan* pScan) -> kt_int32s
+    {
+      const slam_toolbox::SessionLabel* label = getLabel(pScan->GetUniqueId());
+      return label ? label->session_id : 0;
     });
+  return result;
 }
 
 /*****************************************************************************/
-void SMapper::setRemapping(RemappingConfig config)
+int SMapper::computeNextSessionId() const
 /*****************************************************************************/
 {
-  remapping_ = std::move(config);
+  int max_sid = 0;
+  for (const auto& [node_id, label] : node_labels_)
+  {
+    max_sid = std::max(max_sid, label.session_id);
+  }
+  return max_sid + 1;
+}
+
+/*****************************************************************************/
+bool SMapper::setRemapping(std::vector<karto::Vector2<kt_double>> polygon)
+/*****************************************************************************/
+{
+  if (!slam_toolbox::polygon_fill::isSimplePolygon(polygon))
+  {
+    ROS_ERROR("SMapper::setRemapping: rejected polygon with %zu vertices — "
+              "it must have at least 3 vertices and must not self-intersect.",
+              polygon.size());
+    return false;
+  }
+
+  RemappingConfig cfg;
+  cfg.current_session_id = computeNextSessionId();
+  cfg.current_polygon = std::move(polygon);
+  remapping_ = cfg;
+
+  // Tag new scans with the computed session_id and carry the polygon on the
+  // label so it is serialized to .labels on save.
+  current_session_label_.session_id = cfg.current_session_id;
+  current_session_label_.polygon = cfg.current_polygon;
+  return true;
 }
 
 /*****************************************************************************/
@@ -99,8 +161,70 @@ bool SMapper::isRemappingNode(int unique_id) const
 {
   if (!remapping_) return false;
   const slam_toolbox::SessionLabel* label = getLabel(unique_id);
-  const int session_id = label ? label->session_id : -1;
-  return remapping_->non_fixed_session_ids.count(session_id) > 0;
+  const int session_id = label ? label->session_id : 0;
+  return session_id == remapping_->current_session_id;
+}
+
+/*****************************************************************************/
+int SMapper::getOwnerAtWorldPosition(const karto::Vector2<kt_double>& position) const
+/*****************************************************************************/
+{
+  if (!ownership_image_) return 0;
+  karto::Vector2<kt_int32s> gridIdx =
+    ownership_image_->GetCoordinateConverter()->WorldToGrid(position);
+  if (!ownership_image_->IsValidGridIndex(gridIdx)) return 0;
+  return ownership_image_->GetDataPointer()[
+    ownership_image_->GridIndex(gridIdx, false)];
+}
+
+/*****************************************************************************/
+void SMapper::buildOwnershipImage(kt_int32s width, kt_int32s height,
+                                   const karto::Vector2<kt_double>& offset,
+                                   kt_double resolution)
+/*****************************************************************************/
+{
+  if (!remapping_) return;
+
+  ownership_image_.reset(karto::Grid<kt_int32s>::CreateGrid(width, height, resolution));
+  ownership_image_->GetCoordinateConverter()->SetOffset(offset);
+
+  // Fill with session 0 (base session owns everything initially).
+  // Rows are strided by WidthStep (width aligned up to 8), not width — see
+  // Grid::GridIndex.  Using width here would leave the padding bytes at the
+  // end of each row uninitialised and the filter would read garbage.
+  kt_int32s* data = ownership_image_->GetDataPointer();
+  const kt_int32s widthStep = ownership_image_->GetWidthStep();
+  std::fill(data, data + (widthStep * height), 0);
+
+  // Paint a world-space polygon by transforming its vertices into grid
+  // coords and delegating to the standalone scanline fill.
+  auto paintPolygon = [&](int session_id,
+                          const std::vector<karto::Vector2<kt_double>>& polyWorld)
+  {
+    const auto polyGrid = slam_toolbox::polygon_fill::worldToGridPolygon(
+      polyWorld, offset, resolution);
+    slam_toolbox::polygon_fill::fillSimplePolygon<kt_int32s>(
+      data, width, height, widthStep, polyGrid, session_id);
+  };
+
+  // Collect distinct (session_id, polygon) pairs from labels, ordered by
+  // session_id.  std::map keeps chronological ordering so later sessions
+  // overwrite earlier ones in overlapping regions.
+  std::map<int, const std::vector<karto::Vector2<kt_double>>*> historical;
+  for (const auto& [node_id, label] : node_labels_)
+  {
+    if (label.polygon.has_value() &&
+        label.session_id != remapping_->current_session_id)
+    {
+      historical[label.session_id] = &(*label.polygon);
+    }
+  }
+
+  for (const auto& [sid, polyPtr] : historical)
+  {
+    paintPolygon(sid, *polyPtr);
+  }
+  paintPolygon(remapping_->current_session_id, remapping_->current_polygon);
 }
 
 /*****************************************************************************/
@@ -135,7 +259,7 @@ void SMapper::configure(const ros::NodeHandle& nh)
   {
     mapper_->setParamUseScanMatching(use_scan_matching);
   }
-  
+
   bool use_scan_barycenter;
   if(nh.getParam("use_scan_barycenter", use_scan_barycenter))
   {
@@ -358,6 +482,16 @@ void SMapper::setAllLabels(
   const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
 {
   node_labels_ = labels;
+
+  // If remapping was configured before labels were loaded (typical startup
+  // path: setParams → deserialize), recompute current_session_id now that the
+  // real label history is visible.  Loaded labels may include session_ids
+  // larger than whatever we computed against an empty map.
+  if (remapping_)
+  {
+    remapping_->current_session_id = computeNextSessionId();
+    current_session_label_.session_id = remapping_->current_session_id;
+  }
 }
 
 

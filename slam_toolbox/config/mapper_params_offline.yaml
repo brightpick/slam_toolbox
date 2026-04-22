@@ -65,22 +65,26 @@ minimum_angle_penalty: 0.9
 minimum_distance_penalty: 0.5
 use_response_expansion: true
 
-# Session label for scans recorded in this run.
-session_label:
-  session_id: 0
-
-# Optional: spatial remapping configuration.
-# Both fields are required together — omit the entire section to disable remapping.
+# Spatial remapping is not configured via this YAML.  It is a per-run
+# operational flag set from the CLI:
 #
-# non_fixed_session_ids: session IDs that are free to move during Ceres optimisation.
-#   Every node whose session_id is NOT in this list is pinned as constant.
+#   rosrun slam_toolbox slam_toolbox_offline_node \
+#     _remapping_polygon:="[[px0,py0],[px1,py1],[px2,py2],...]"
+#     # default units: pixels (PGM convention, py=0 at top of image)
 #
-# bbox: axis-aligned bounding box (world coordinates) [x_min, y_min, x_max, y_max]
-#   defining the remapped area.
-#   - Scans from non_fixed_session_ids (remapping session) may only draw INSIDE the box.
-#   - All other scans (fixed session) may only draw OUTSIDE the box.
-#   Rays are clipped at the boundary — not dropped — so free-space is still accumulated.
+#   rosrun slam_toolbox slam_toolbox_offline_node \
+#     _remapping_polygon:="[[x0,y0],[x1,y1],[x2,y2],...]" \
+#     _remapping_polygon_units:="world"
 #
-# remapping:
-#   non_fixed_session_ids: [1, 2]
-#   bbox: [1.0, 2.0, 5.0, 6.0]
+# Polygon must be a simple closed ring (edges don't cross themselves);
+# convex and non-convex shapes are both accepted.  Pixel-coord polygons
+# are resolved to world coords after `deserialize_map` loads the existing
+# scans (conversion needs the grid height/offset).  World-coord polygons
+# take effect immediately.  In either case a new session_id is assigned
+# automatically as max(session_id in .labels) + 1.
+#
+# Scans from the new session may only draw inside the polygon; every
+# historical session only inside its own polygon; cells outside every
+# polygon are drawn by session-0 scans only.  Rays are clipped at the
+# boundary, not dropped.  Omit `_remapping_polygon` to run in standard
+# mapping mode (all new scans are session 0).

@@ -16,7 +16,10 @@
 #ifndef SLAM_TOOLBOX_SESSION_LABEL_H_
 #define SLAM_TOOLBOX_SESSION_LABEL_H_
 
+#include <optional>
+#include <vector>
 #include <yaml-cpp/yaml.h>
+#include <karto_sdk/Karto.h>
 
 namespace slam_toolbox
 {
@@ -24,7 +27,13 @@ namespace slam_toolbox
 struct SessionLabel
 {
   int session_id{0};
+  // Area of the session as a simple polygon in world coordinates.
+  // nullopt for the base session (no constrained area).
+  std::optional<std::vector<karto::Vector2<kt_double>>> polygon;
 
+  // Per-label YAML contains only session_id.  The polygon is emitted once
+  // per session in the `sessions:` section of the .labels file — see
+  // serialization.hpp.
   YAML::Node serialize() const
   {
     YAML::Node node;

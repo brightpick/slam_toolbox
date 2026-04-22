@@ -18,6 +18,14 @@ target_link_libraries(${PROJECT_NAME}_remap_bbox_test
     ${catkin_LIBRARIES}
 )
 
+catkin_add_gtest(${PROJECT_NAME}_polygon_fill_test
+    polygon_fill_test.cpp
+)
+
+target_link_libraries(${PROJECT_NAME}_polygon_fill_test
+    ${catkin_LIBRARIES}
+)
+
 find_package(rostest REQUIRED)
 
 add_rostest_gtest(${PROJECT_NAME}_ceres_fixed_test

@@ -37,6 +37,7 @@
 #include "slam_toolbox/map_saver.hpp"
 #include "slam_toolbox/loop_closure_assistant.hpp"
 
+#include <optional>
 #include <string>
 #include <map>
 #include <vector>
@@ -133,6 +134,12 @@ protected:
   std::unique_ptr<map_saver::MapSaver> map_saver_;
   std::unique_ptr<loop_closure_assistant::LoopClosureAssistant> closure_assistant_;
   std::unique_ptr<laser_utils::ScanHolder> scan_holder_;
+
+  // Pending remap polygon in PGM pixel coordinates, stashed in setParams
+  // and resolved to world coords after deserialization (which fixes the
+  // grid dimensions needed for the pixel→world conversion).
+  // PGM convention: py=0 at the top of the image, y increasing downward.
+  std::optional<std::vector<karto::Vector2<kt_double>>> pending_pixel_polygon_;
 
   // Internal state
   std::vector<std::unique_ptr<boost::thread> > threads_;

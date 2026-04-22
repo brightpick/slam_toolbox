@@ -179,56 +179,98 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
   smapper_->configure(private_nh);
   private_nh.setParam("paused_new_measurements", false);
 
-  slam_toolbox::SessionLabel session_label;
-  private_nh.param("session_label/session_id", session_label.session_id, 0);
-  smapper_->setSessionLabel(session_label);
-  ROS_INFO("SlamToolbox: session_label = %s", YAML::Dump(session_label.serialize()).c_str());
-
-  XmlRpc::XmlRpcValue xml_remapping;
-  if (private_nh.getParam("remapping", xml_remapping) &&
-      xml_remapping.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+  // Optional private params `remapping_polygon` + `remapping_polygon_units`.
+  // Intended to be set from the CLI per run, e.g.
+  //   rosrun slam_toolbox async_slam_toolbox_node \
+  //     _remapping_polygon:="[[20,40],[100,40],[100,120],[20,120]]"
+  //     # default units: pixels (PGM convention, py=0 at top of image)
+  //
+  //   rosrun slam_toolbox async_slam_toolbox_node \
+  //     _remapping_polygon:="[[1.0,2.0],[5.0,2.0],[5.0,6.0],[1.0,6.0]]" \
+  //     _remapping_polygon_units:="world"
+  //
+  // Polygon is a simple closed polygon (convex or non-convex, must not
+  // self-intersect); vertices are in order along the ring.  Pixel coords
+  // are resolved to world coords after deserialization loads the scans
+  // (the conversion needs the grid height/offset).  World coords take
+  // effect immediately.  Session_id is assigned automatically by
+  // SMapper::setRemapping as max(existing label.session_id) + 1.
+  auto readPolygonParam = [&](XmlRpc::XmlRpcValue& xml,
+                              std::vector<karto::Vector2<kt_double>>& out) -> bool
   {
-    mapper_utils::SMapper::RemappingConfig cfg;
-    bool ids_set = false;
-    bool bbox_set = false;
-
-    if (xml_remapping.hasMember("non_fixed_session_ids") &&
-        xml_remapping["non_fixed_session_ids"].getType() == XmlRpc::XmlRpcValue::TypeArray)
+    // XmlRpcValue's double cast only accepts TypeDouble — integer YAML
+    // scalars (e.g. 916 vs 916.0) come through as TypeInt and would
+    // otherwise throw XmlRpcException.  Normalise here.
+    auto toDouble = [](XmlRpc::XmlRpcValue& v, bool& ok) -> double
     {
-      XmlRpc::XmlRpcValue& xml_ids = xml_remapping["non_fixed_session_ids"];
-      for (int i = 0; i < xml_ids.size(); ++i)
+      ok = true;
+      switch (v.getType())
       {
-        cfg.non_fixed_session_ids.insert(static_cast<int>(xml_ids[i]));
+        case XmlRpc::XmlRpcValue::TypeDouble: return static_cast<double>(v);
+        case XmlRpc::XmlRpcValue::TypeInt:    return static_cast<int>(v);
+        default: ok = false; return 0.0;
       }
-      ids_set = !cfg.non_fixed_session_ids.empty();
-    }
+    };
 
-    if (xml_remapping.hasMember("bbox") &&
-        xml_remapping["bbox"].getType() == XmlRpc::XmlRpcValue::TypeArray &&
-        xml_remapping["bbox"].size() == 4)
+    if (xml.getType() != XmlRpc::XmlRpcValue::TypeArray || xml.size() < 3)
     {
-      XmlRpc::XmlRpcValue& xml_bbox = xml_remapping["bbox"];
-      const double x1 = static_cast<double>(xml_bbox[0]);
-      const double y1 = static_cast<double>(xml_bbox[1]);
-      const double x2 = static_cast<double>(xml_bbox[2]);
-      const double y2 = static_cast<double>(xml_bbox[3]);
-      cfg.bbox.SetMinimum(karto::Vector2<kt_double>(x1, y1));
-      cfg.bbox.SetMaximum(karto::Vector2<kt_double>(x2, y2));
-      bbox_set = true;
+      ROS_ERROR("SlamToolbox: remapping_polygon must be a list of at least "
+                "3 [x, y] vertices.");
+      return false;
     }
+    out.clear();
+    out.reserve(xml.size());
+    for (int i = 0; i < xml.size(); ++i)
+    {
+      if (xml[i].getType() != XmlRpc::XmlRpcValue::TypeArray || xml[i].size() != 2)
+      {
+        ROS_ERROR("SlamToolbox: remapping_polygon vertex %d must be [x, y].", i);
+        return false;
+      }
+      bool ok_x = false, ok_y = false;
+      const double x = toDouble(xml[i][0], ok_x);
+      const double y = toDouble(xml[i][1], ok_y);
+      if (!ok_x || !ok_y)
+      {
+        ROS_ERROR("SlamToolbox: remapping_polygon vertex %d has non-numeric "
+                  "coordinate.", i);
+        return false;
+      }
+      out.emplace_back(x, y);
+    }
+    return true;
+  };
 
-    if (ids_set && bbox_set)
+  XmlRpc::XmlRpcValue xml_poly;
+  if (private_nh.getParam("remapping_polygon", xml_poly))
+  {
+    std::vector<karto::Vector2<kt_double>> polygon;
+    if (readPolygonParam(xml_poly, polygon))
     {
-      ROS_INFO("SlamToolbox: remapping configured — %zu session IDs, bbox [%.3f, %.3f, %.3f, %.3f]",
-               cfg.non_fixed_session_ids.size(),
-               cfg.bbox.GetMinimum().GetX(), cfg.bbox.GetMinimum().GetY(),
-               cfg.bbox.GetMaximum().GetX(), cfg.bbox.GetMaximum().GetY());
-      smapper_->setRemapping(std::move(cfg));
-    }
-    else
-    {
-      ROS_WARN("SlamToolbox: remapping section found but incomplete — "
-               "both non_fixed_session_ids and bbox are required; remapping disabled");
+      std::string units;
+      private_nh.param<std::string>("remapping_polygon_units", units, "pixels");
+
+      if (units == "world")
+      {
+        if (smapper_->setRemapping(polygon))
+        {
+          ROS_INFO("SlamToolbox: remapping configured (world) — session_id=%d "
+                   "(auto), %zu-vertex polygon.",
+                   smapper_->getRemapping()->current_session_id, polygon.size());
+        }
+      }
+      else if (units == "pixels")
+      {
+        pending_pixel_polygon_ = std::move(polygon);
+        ROS_INFO("SlamToolbox: remapping_polygon queued in pixels (%zu "
+                 "vertices) — will resolve to world coords after "
+                 "deserialization.", pending_pixel_polygon_->size());
+      }
+      else
+      {
+        ROS_ERROR("SlamToolbox: remapping_polygon_units must be 'pixels' or "
+                  "'world' (got '%s').  Remapping disabled.", units.c_str());
+      }
     }
   }
 }
@@ -829,8 +871,13 @@ void SlamToolbox::loadSerializedPoseGraph(
     ROS_ERROR("Invalid sensor pointer in dataset. Unable to register sensor.");
   }
 
-  solver_->Compute();
-
+  // NOTE: solver_->Compute() is deliberately NOT called here.  The fixed-node
+  // predicate consults smapper_->getRemapping(), which is only populated
+  // after this function returns — in the pending-pixel-polygon resolution
+  // branch of deserializePoseGraphCallback.  Running Compute here would
+  // leave every loaded node unpinned (apart from first_node_), letting the
+  // solver nudge the whole previous map before the remapping filter is
+  // active.  The caller invokes Compute at the correct point.
   return;
 }
 
@@ -875,6 +922,71 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   loadSerializedPoseGraph(mapper, dataset);
   smapper_->setAllLabels(labels);
+
+  // Resolve a pending pixel-coord remap polygon now that scans are loaded.
+  // PGM convention: py=0 is the top row, y increasing downward; the grid's
+  // row 0 is the bottom, so image_row → grid_row is (height - 1 - py).
+  // Per vertex:
+  //   world_x = offset.x + px * resolution
+  //   world_y = offset.y + (height - 1 - py) * resolution
+  if (pending_pixel_polygon_)
+  {
+    kt_int32s width, height;
+    karto::Vector2<kt_double> offset;
+    karto::OccupancyGrid::ComputeDimensions(
+      smapper_->getMapper()->GetAllProcessedScans(),
+      resolution_, width, height, offset);
+
+    if (height <= 0 || width <= 0)
+    {
+      ROS_WARN("SlamToolbox: pending pixel remapping_polygon cannot be "
+               "applied — deserialized map has zero dimensions.");
+    }
+    else
+    {
+      std::vector<karto::Vector2<kt_double>> world_poly;
+      world_poly.reserve(pending_pixel_polygon_->size());
+      for (const auto& v : *pending_pixel_polygon_)
+      {
+        const double wx = offset.GetX() + v.GetX() * resolution_;
+        const double wy = offset.GetY() + (height - 1 - v.GetY()) * resolution_;
+        world_poly.emplace_back(wx, wy);
+      }
+      if (smapper_->setRemapping(world_poly))
+      {
+        ROS_INFO("SlamToolbox: remapping resolved from pixels — "
+                 "session_id=%d (auto), %zu-vertex polygon (grid %dx%d, "
+                 "offset [%.3f, %.3f], resolution %.3f)",
+                 smapper_->getRemapping()->current_session_id,
+                 world_poly.size(),
+                 width, height, offset.GetX(), offset.GetY(), resolution_);
+      }
+    }
+    pending_pixel_polygon_.reset();
+  }
+
+  // Run the post-load optimisation now that labels AND remapping config are
+  // in place — the fixed-node predicate depends on both.  Pulled out of
+  // loadSerializedPoseGraph so old-session nodes stay pinned here.
+  solver_->Compute();
+
+  // Wire loop closure candidate filter now that labels are available.
+  // Candidates whose session_id doesn't match the ownership image at their
+  // position are skipped — they belong to a superseded remapping session.
+  if (smapper_->getRemapping().has_value() && candidate_selector_)
+  {
+    candidate_selector_->setCandidateFilter(
+      [this](karto::LocalizedRangeScan* pScan) -> bool
+      {
+        const slam_toolbox::SessionLabel* label =
+          smapper_->getLabel(pScan->GetUniqueId());
+        const int scan_sid = label ? label->session_id : 0;
+        const int owner = smapper_->getOwnerAtWorldPosition(
+          pScan->GetCorrectedPose().GetPosition());
+        return scan_sid != owner;
+      });
+  }
+
   updateMap();
 
   first_measurement_ = true;

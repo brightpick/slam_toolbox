@@ -4951,14 +4951,14 @@ namespace karto
      * Increments all the grid cells from (x0, y0) to (x1, y1);
      * if applicable, apply f to each cell traced.
      *
-     * When pBounds is non-null it points to [minX, minY, maxX, maxY] in grid
-     * coordinates.  Only cells whose inside/outside status matches allowInside
-     * are incremented; the Bresenham stepping is unchanged so no single-pixel
-     * divergence artefacts appear.
+     * When pOwnership is non-null, only cells where the ownership value equals
+     * scanSessionId are incremented.  The Bresenham stepping is unchanged so
+     * no single-pixel divergence artefacts appear.
      */
     void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1,
                    Functor* f = NULL,
-                   const kt_int32s* pBounds = nullptr, kt_bool allowInside = false)
+                   const Grid<kt_int32s>* pOwnership = nullptr,
+                   kt_int32s scanSessionId = 0)
     {
       kt_bool steep = abs(y1 - y0) > abs(x1 - x0);
       if (steep)
@@ -5010,11 +5010,12 @@ namespace karto
           error -= deltaX;
         }
 
-        if (pBounds)
+        if (pOwnership)
         {
-          const kt_bool inside = pointX >= pBounds[0] && pointX <= pBounds[2] &&
-                                 pointY >= pBounds[1] && pointY <= pBounds[3];
-          if (inside != allowInside) continue;
+          Vector2<kt_int32s> pt(pointX, pointY);
+          if (!pOwnership->IsValidGridIndex(pt)) continue;
+          if (pOwnership->GetDataPointer()[pOwnership->GridIndex(pt, false)]
+              != scanSessionId) continue;
         }
 
         Vector2<kt_int32s> gridIndex(pointX, pointY);
@@ -6085,11 +6086,18 @@ namespace karto
      * scans may only draw OUTSIDE.  The Bresenham stepping is identical to an
      * unfiltered trace, preventing single-pixel divergence artefacts.
      */
+    /**
+     * Create an occupancy grid from the given scans.
+     *
+     * When pOwnership and fnGetSessionId are provided, each scan only writes
+     * to cells it owns in the ownership image — enabling multi-session
+     * remapping without single-pixel artefacts.
+     */
     static OccupancyGrid* CreateFromScans(
         const LocalizedRangeScanVector& rScans,
         kt_double resolution,
-        const BoundingBox2* pFilterBbox = nullptr,
-        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping = nullptr)
+        const Grid<kt_int32s>* pOwnership = nullptr,
+        const std::function<kt_int32s(LocalizedRangeScan*)>& fnGetSessionId = nullptr)
     {
       if (rScans.empty())
       {
@@ -6100,7 +6108,7 @@ namespace karto
       Vector2<kt_double> offset;
       ComputeDimensions(rScans, resolution, width, height, offset);
       OccupancyGrid* pOccupancyGrid = new OccupancyGrid(width, height, offset, resolution);
-      pOccupancyGrid->CreateFromScans(rScans, pFilterBbox, fnIsRemapping);
+      pOccupancyGrid->CreateFromScans(rScans, pOwnership, fnGetSessionId);
 
       return pOccupancyGrid;
     }
@@ -6225,7 +6233,7 @@ namespace karto
       return m_pCellPassCnt;
     }
 
-  protected:
+  public:
     /**
      * Calculate grid dimensions from localized range scans
      * @param rScans
@@ -6264,10 +6272,16 @@ namespace karto
      * Create grid using scans
      * @param rScans
      */
+    /**
+     * Create grid using scans.
+     *
+     * When pOwnership and fnGetSessionId are provided, each scan only writes
+     * to cells it owns in the ownership image.
+     */
     virtual void CreateFromScans(
         const LocalizedRangeScanVector& rScans,
-        const BoundingBox2* pFilterBbox = nullptr,
-        const std::function<kt_bool(LocalizedRangeScan*)>& fnIsRemapping = nullptr)
+        const Grid<kt_int32s>* pOwnership = nullptr,
+        const std::function<kt_int32s(LocalizedRangeScan*)>& fnGetSessionId = nullptr)
     {
       m_pCellPassCnt->Resize(GetWidth(), GetHeight());
       m_pCellPassCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
@@ -6279,9 +6293,9 @@ namespace karto
       {
         if (!pScan) continue;
 
-        if (pFilterBbox && fnIsRemapping)
+        if (pOwnership && fnGetSessionId)
         {
-          AddScan(pScan, false, pFilterBbox, fnIsRemapping(pScan));
+          AddScan(pScan, false, pOwnership, fnGetSessionId(pScan));
         }
         else
         {
@@ -6293,30 +6307,22 @@ namespace karto
     }
 
     /**
-     * Adds the scan's information to this grid's counters (optionally
-     * update the grid's cells' occupancy status)
-     * @param pScan
-     * @param doUpdate whether to update the grid's cell's occupancy status
-     * @return returns false if an endpoint fell off the grid, otherwise true
-     */
-    /**
      * Adds the scan's information to this grid's counters.
      *
-     * When pFilterBbox is non-null, a spatial filter is applied: only cells
-     * inside (allowInside=true) or outside (allowInside=false) the bbox are
-     * modified.  The Bresenham stepping is always identical, preventing
-     * single-pixel divergence artefacts.
+     * When pOwnership is non-null, only cells where the ownership value
+     * matches scanSessionId are modified.  The Bresenham stepping is always
+     * identical, preventing single-pixel divergence artefacts.
      *
-     * @param pScan        scan to process
-     * @param doUpdate     whether to immediately update occupancy values
-     * @param pFilterBbox  optional axis-aligned bounding box for spatial filtering
-     * @param allowInside  when pFilterBbox set: true → only inside, false → only outside
+     * @param pScan          scan to process
+     * @param doUpdate       whether to immediately update occupancy values
+     * @param pOwnership     optional ownership image for spatial filtering
+     * @param scanSessionId  session that owns this scan (used with pOwnership)
      * @return false if any endpoint fell off the grid
      */
     virtual kt_bool AddScan(LocalizedRangeScan* pScan,
                             kt_bool doUpdate = false,
-                            const BoundingBox2* pFilterBbox = nullptr,
-                            kt_bool allowInside = false)
+                            const Grid<kt_int32s>* pOwnership = nullptr,
+                            kt_int32s scanSessionId = 0)
     {
       LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
       const kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
@@ -6325,20 +6331,6 @@ namespace karto
 
       const Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
       const PointVectorDouble& rPointReadings = pScan->GetPointReadings(false);
-
-      // Convert world-space bbox to grid-space once for all rays.
-      const kt_int32s* pBounds = nullptr;
-      kt_int32s bounds[4];
-      if (pFilterBbox)
-      {
-        const Vector2<kt_int32s> gridBboxMin =
-          m_pCellPassCnt->WorldToGrid(pFilterBbox->GetMinimum());
-        const Vector2<kt_int32s> gridBboxMax =
-          m_pCellPassCnt->WorldToGrid(pFilterBbox->GetMaximum());
-        bounds[0] = gridBboxMin.GetX(); bounds[1] = gridBboxMin.GetY();
-        bounds[2] = gridBboxMax.GetX(); bounds[3] = gridBboxMax.GetY();
-        pBounds = bounds;
-      }
 
       kt_bool isAllInMap = true;
       int pointIndex = 0;
@@ -6364,7 +6356,7 @@ namespace karto
         }
 
         if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate,
-                       pBounds, allowInside))
+                       pOwnership, scanSessionId))
         {
           isAllInMap = false;
         }
@@ -6398,16 +6390,16 @@ namespace karto
      * @param rWorldTo end position of beam
      * @param isEndPointValid is the reading within the range threshold?
      * @param doUpdate whether to update the cells' occupancy status immediately
-     * @param pBounds optional grid-space bbox filter [minX, minY, maxX, maxY]
-     * @param allowInside when pBounds set: true → only inside, false → only outside
+     * @param pOwnership optional ownership image — only cells owned by scanSessionId are modified
+     * @param scanSessionId session that owns this scan (used with pOwnership)
      * @return returns false if an endpoint fell off the grid, otherwise true
      */
     virtual kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
                              const Vector2<kt_double>& rWorldTo,
                              kt_bool isEndPointValid,
                              kt_bool doUpdate = false,
-                             const kt_int32s* pBounds = nullptr,
-                             kt_bool allowInside = false)
+                             const Grid<kt_int32s>* pOwnership = nullptr,
+                             kt_int32s scanSessionId = 0)
     {
       assert(m_pCellPassCnt != NULL && m_pCellHitsCnt != NULL);
 
@@ -6417,23 +6409,21 @@ namespace karto
       CellUpdater* pCellUpdater = doUpdate ? m_pCellUpdater : NULL;
       m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(),
                                 gridTo.GetX(), gridTo.GetY(),
-                                pCellUpdater, pBounds, allowInside);
+                                pCellUpdater, pOwnership, scanSessionId);
 
       // for the end point
       if (isEndPointValid)
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
-          // Check spatial filter for endpoint
-          if (pBounds)
+          // Check ownership filter for endpoint
+          if (pOwnership)
           {
-            const kt_int32s ex = gridTo.GetX();
-            const kt_int32s ey = gridTo.GetY();
-            const kt_bool inside = ex >= pBounds[0] && ex <= pBounds[2] &&
-                                   ey >= pBounds[1] && ey <= pBounds[3];
-            if (inside != allowInside)
+            if (!pOwnership->IsValidGridIndex(gridTo)) return true;
+            if (pOwnership->GetDataPointer()[pOwnership->GridIndex(gridTo, false)]
+                != scanSessionId)
             {
-              return m_pCellPassCnt->IsValidGridIndex(gridTo);
+              return true;
             }
           }
 

@@ -63,11 +63,11 @@ karto::Edge<karto::LocalizedRangeScan>* makeEdge(
 //
 //  Session IDs:
 //    Node 0  (0, 0)  session_id=0 — fixed by CeresSolver first_node_ mechanism
-//                                   AND pinned by non_fixed_session_ids (not in list)
-//    Node 1  (1, 0)  session_id=0 — pinned (session_id not in non_fixed list)
-//    Node 2  (3, 0)  session_id=1 — free (session_id=1 IS in non_fixed list)
+//                                   AND pinned (session_id ≠ current_session_id)
+//    Node 1  (1, 0)  session_id=0 — pinned (session_id ≠ current_session_id)
+//    Node 2  (3, 0)  session_id=1 — free (session_id == current_session_id)
 //
-//  non_fixed_session_ids = {1}  →  only session 1 is allowed to move
+//  current_session_id = 1  →  only session 1 is allowed to move
 //
 //  Constraints:
 //    Edge 0→1 : diff (1, 0)  — consistent with initial positions
@@ -99,28 +99,21 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   auto* e02 = makeEdge(v0, v2, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(2.0, 0.0, 0.0));
 
   // --- Set up SMapper: session 0 = pinned, session 1 = free ---
+  // Order matters.  SMapper auto-assigns current_session_id = max(label) + 1:
+  //  1) register nodes 0 and 1 first — they inherit the default label (session 0).
+  //  2) call setRemapping(polygon) — computes current_session_id = 1 and updates
+  //     the current session label so node 2 (registered next) is tagged session 1.
+  // Polygon is arbitrary — ceres pinning only consults isRemappingNode.
   mapper_utils::SMapper smapper;
-
-  slam_toolbox::SessionLabel session0_label;
-  session0_label.session_id = 0;
-  smapper.setSessionLabel(session0_label);
   smapper.registerNode(0);
   smapper.registerNode(1);
 
-  slam_toolbox::SessionLabel session1_label;
-  session1_label.session_id = 1;
-  smapper.setSessionLabel(session1_label);
-  smapper.registerNode(2);
+  std::vector<karto::Vector2<kt_double>> polygon{
+    {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
+  ASSERT_TRUE(smapper.setRemapping(polygon));
+  ASSERT_EQ(smapper.getRemapping()->current_session_id, 1);
 
-  // Configure remapping: session 1 is free to move; bbox is arbitrary (ceres only
-  // uses non_fixed_session_ids, not the spatial boundary).
-  {
-    mapper_utils::SMapper::RemappingConfig cfg;
-    cfg.non_fixed_session_ids = {1};
-    cfg.bbox.SetMinimum(karto::Vector2<kt_double>(0.0, 0.0));
-    cfg.bbox.SetMaximum(karto::Vector2<kt_double>(100.0, 100.0));
-    smapper.setRemapping(std::move(cfg));
-  }
+  smapper.registerNode(2);
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;
@@ -152,7 +145,7 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   EXPECT_NEAR((*graph)[0](0), 0.0, tol);
   EXPECT_NEAR((*graph)[0](1), 0.0, tol);
 
-  // Node 1: must not have moved (session_id=0, not in non_fixed_session_ids)
+  // Node 1: must not have moved (session_id=0 ≠ current_session_id=1)
   ASSERT_NE(graph->find(1), graph->end());
   EXPECT_NEAR((*graph)[1](0), 1.0, tol);
   EXPECT_NEAR((*graph)[1](1), 0.0, tol);
@@ -174,11 +167,12 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
 }
 
 // ---------------------------------------------------------------------------
-// When non_fixed_session_ids is empty, no extra pinning — only first node fixed.
+// When no RemappingConfig is set, no extra pinning — only first node fixed.
 // ---------------------------------------------------------------------------
 //
-//  All nodes have session_id=0, non_fixed_session_ids = {} (empty).
-//  Only node 0 is pinned (first_node_). Nodes 1 and 2 are free to move.
+//  All nodes have session_id=0, setRemapping is never called.
+//  The predicate returns false for every node (getRemapping().has_value() is false),
+//  so only node 0 is pinned (first_node_).  Nodes 1 and 2 are free to move.
 //
 //  Constraints:
 //    Edge 0→1 : diff (1, 0)
@@ -186,7 +180,7 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
 //                               but initial position is (5,0) → should move
 // ---------------------------------------------------------------------------
 
-TEST(CeresSolverFixedPoseTest, EmptyNonFixedListOnlyPinsFirstNode)
+TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
 {
   auto* scan0 = makeScan(0, 0.0, 0.0);
   auto* scan1 = makeScan(1, 1.0, 0.0);
@@ -200,13 +194,10 @@ TEST(CeresSolverFixedPoseTest, EmptyNonFixedListOnlyPinsFirstNode)
   auto* e02 = makeEdge(v0, v2, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(2.0, 0.0, 0.0));
 
   mapper_utils::SMapper smapper;
-  slam_toolbox::SessionLabel label;
-  label.session_id = 0;
-  smapper.setSessionLabel(label);
   smapper.registerNode(0);
   smapper.registerNode(1);
   smapper.registerNode(2);
-  // non_fixed_session_ids left empty (default)
+  // setRemapping intentionally not called — default session label is session 0
 
   solver_plugins::CeresSolver solver;
   solver.setNodeFixedPredicate(

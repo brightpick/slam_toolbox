@@ -24,9 +24,10 @@
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
 #include "slam_toolbox/session_label.hpp"
+#include <memory>
 #include <optional>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
 
 namespace mapper_utils
 {
@@ -36,36 +37,28 @@ using namespace ::karto;
 class SMapper
 {
 public:
-  // Configuration for the spatial remapping filter.
-  // Both fields must be provided together — remapping requires a spatial
-  // boundary AND a set of session IDs that define the remapping session.
-  // non_fixed_session_ids also controls which poses Ceres is allowed to move.
+  // Configuration for the active remapping session.
+  // current_session_id is computed automatically by setRemapping() as
+  // max(existing label.session_id) + 1 — it is never set by callers.
+  // current_polygon is the area to re-map.  Must be a simple polygon
+  // (edges don't cross themselves); non-convex is allowed.
+  // Historical sessions are derived from the .labels file.
   struct RemappingConfig
   {
-    karto::BoundingBox2 bbox;
-    std::unordered_set<int> non_fixed_session_ids;
+    int current_session_id;
+    std::vector<karto::Vector2<kt_double>> current_polygon;
   };
 
   SMapper();
   ~SMapper();
 
-  // get occupancy grid from scans
   karto::OccupancyGrid* getOccupancyGrid(const double& resolution);
 
-  // convert Karto pose to TF pose
   tf2::Transform toTfPose(const karto::Pose2& pose) const;
-
-  // convert TF pose to karto pose
   karto::Pose2 toKartoPose(const tf2::Transform& pose) const;
 
   void configure(const ros::NodeHandle& nh);
   void Reset();
-
-  // // processors
-  // kt_bool ProcessAtDock(LocalizedRangeScan* pScan);
-  // kt_bool ProcessAgainstNode(LocalizedRangeScan* pScan,  const int& nodeId);
-  // kt_bool ProcessAgainstNodesNearBy(LocalizedRangeScan* pScan);
-  // kt_bool ProcessLocalization(LocalizedRangeScan* pScan);
 
   void setMapper(karto::Mapper* mapper);
   karto::Mapper* getMapper();
@@ -80,25 +73,43 @@ public:
   const std::unordered_map<int, slam_toolbox::SessionLabel>& getAllLabels() const;
   void setAllLabels(const std::unordered_map<int, slam_toolbox::SessionLabel>& labels);
 
-  // Configure spatial remapping. bbox defines the remapped area; scans whose
-  // session_id is in non_fixed_session_ids may only draw inside it, all others
-  // only outside. The same session IDs also control which Ceres poses are free
-  // to move during optimisation.
-  void setRemapping(RemappingConfig config);
-
+  // Configure remapping with a simple polygon (edges must not cross
+  // themselves; non-convex shapes are allowed).  Returns false and leaves
+  // remapping unchanged if the polygon has < 3 vertices or self-intersects.
+  // The session_id is computed as one more than the highest session_id
+  // currently present in node_labels_, and is written to both the
+  // RemappingConfig and the current session label so subsequent
+  // registerNode() calls tag new scans with it.
+  bool setRemapping(std::vector<karto::Vector2<kt_double>> polygon);
   const std::optional<RemappingConfig>& getRemapping() const;
 
-  // Returns true if the node belongs to a remapping session (its session_id
-  // is in non_fixed_session_ids). Returns false when remapping is not configured.
+  // Returns true if the node belongs to the current remapping session.
   bool isRemappingNode(int unique_id) const;
+
+  // Returns the session_id that owns the cell at the given world position.
+  // Returns 0 (base session) when no ownership image is built.
+  int getOwnerAtWorldPosition(const karto::Vector2<kt_double>& position) const;
+
+  // Build the ownership image from labels + current remapping config.
+  // Must be called after labels are loaded (deserialization) and whenever
+  // the grid dimensions change.
+  void buildOwnershipImage(kt_int32s width, kt_int32s height,
+                           const karto::Vector2<kt_double>& offset,
+                           kt_double resolution);
+
+  // Convenience: returns the ownership image pointer (may be null).
+  const karto::Grid<kt_int32s>* getOwnershipImage() const { return ownership_image_.get(); }
 
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
 
 private:
+  int computeNextSessionId() const;
+
   std::unordered_map<int, slam_toolbox::SessionLabel> node_labels_;
   slam_toolbox::SessionLabel current_session_label_;
   std::optional<RemappingConfig> remapping_;
+  std::unique_ptr<karto::Grid<kt_int32s>> ownership_image_;
 };
 
 } // end namespace
