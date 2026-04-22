@@ -26,8 +26,9 @@ namespace polygon_fill
 {
 
 // Return false if the polygon is degenerate (< 3 vertices) or self-intersecting.
-// Only strict crossings are detected — polygons whose edges merely touch are
-// accepted.
+// Only strict crossings are detected — polygons whose edges merely touch (a
+// shared vertex, a zero-length edge, or a collinear overlap) are accepted.
+// Callers are expected to feed an already-deduplicated ring.
 inline bool isSimplePolygon(
     const std::vector<karto::Vector2<kt_double>>& poly)
 {

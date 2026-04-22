@@ -4940,15 +4940,6 @@ namespace karto
 
     /**
      * Increments all the grid cells from (x0, y0) to (x1, y1);
-     * if applicable, apply f to each cell traced
-     * @param x0
-     * @param y0
-     * @param x1
-     * @param y1
-     * @param f
-     */
-    /**
-     * Increments all the grid cells from (x0, y0) to (x1, y1);
      * if applicable, apply f to each cell traced.
      *
      * When pOwnership is non-null, only cells where the ownership value equals
@@ -6074,19 +6065,6 @@ namespace karto
 
   public:
     /**
-     * Create an occupancy grid from the given scans using the given resolution
-     * @param rScans
-     * @param resolution
-     */
-    /**
-     * Create an occupancy grid from the given scans using the given resolution.
-     *
-     * When pFilterBbox and fnIsRemapping are provided, per-scan spatial filtering
-     * is applied: remapping-session scans may only draw INSIDE the bbox; fixed
-     * scans may only draw OUTSIDE.  The Bresenham stepping is identical to an
-     * unfiltered trace, preventing single-pixel divergence artefacts.
-     */
-    /**
      * Create an occupancy grid from the given scans.
      *
      * When pOwnership and fnGetSessionId are provided, each scan only writes
@@ -6269,10 +6247,6 @@ namespace karto
     }
 
     /**
-     * Create grid using scans
-     * @param rScans
-     */
-    /**
      * Create grid using scans.
      *
      * When pOwnership and fnGetSessionId are provided, each scan only writes
@@ -6370,21 +6344,11 @@ namespace karto
     /**
      * Traces a beam from the start position to the end position marking
      * the bookkeeping arrays accordingly.
-     * @param rWorldFrom start position of beam
-     * @param rWorldTo end position of beam
-     * @param isEndPointValid is the reading within the range threshold?
-     * @param doUpdate whether to update the cells' occupancy status immediately
-     * @return returns false if an endpoint fell off the grid, otherwise true
-     */
-    /**
-     * Traces a beam from the start position to the end position marking
-     * the bookkeeping arrays accordingly.
      *
-     * When pBounds is non-null it points to [minX, minY, maxX, maxY] in grid
-     * coordinates.  Only cells whose inside/outside status matches allowInside
-     * are modified (both pass-through and endpoint hit).  The Bresenham stepping
-     * is always identical regardless of the filter, preventing single-pixel
-     * divergence artefacts.
+     * When pOwnership is non-null, only cells whose ownership value equals
+     * scanSessionId are modified (both pass-through and endpoint hit).  The
+     * Bresenham stepping is always identical regardless of the filter,
+     * preventing single-pixel divergence artefacts.
      *
      * @param rWorldFrom start position of beam
      * @param rWorldTo end position of beam
@@ -6416,10 +6380,13 @@ namespace karto
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
-          // Check ownership filter for endpoint
+          // Check ownership filter for endpoint.  Ownership image is
+          // expected to be sized identically to the target grid (that is an
+          // invariant of SMapper::buildOwnershipImage).  If a caller ever
+          // violates it the assert catches the logic error in debug builds.
           if (pOwnership)
           {
-            if (!pOwnership->IsValidGridIndex(gridTo)) return true;
+            assert(pOwnership->IsValidGridIndex(gridTo));
             if (pOwnership->GetDataPointer()[pOwnership->GridIndex(gridTo, false)]
                 != scanSessionId)
             {

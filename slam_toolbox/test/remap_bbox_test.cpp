@@ -583,16 +583,20 @@ protected:
   }
 
   // Helper: configure remapping with the shared rectangular polygon.
-  // Adds an anchor scan in session 0 to extend grid bounds; setRemapping()
-  // then auto-assigns current_session_id = 1 (max of {0} + 1).
+  // Adds two far-apart anchor scans in session 0 to define the grid bounds;
+  // setRemapping() then auto-assigns current_session_id = 1 (max of {0} + 1).
   //
-  // Anchor at (20, 20) is far from every assertion point, so its session-0
-  // cells never overlap the tested region.  All test scans labelled session 1
-  // must be added AFTER setRemapping — the production flow is: load history →
+  // Rationale: SMapper::getOccupancyGrid sizes the target grid from BASE-
+  // SESSION scans only (by design — remap output must slot into the old PGM
+  // pixel-for-pixel).  The anchor pair at (-5, -5) and (15, 15) extends the
+  // base bbox to cover every assertion point in Suite B without firing rays
+  // through the assertion region.  All test scans labelled session 1 must be
+  // added AFTER setRemapping — the production flow is: load history →
   // setRemapping → new scans inherit the computed current session.
   void setRemapping()
   {
-    addScans(20.0, 20.0, 0.1, /*session_id=*/0);
+    addScans(-5.0, -5.0, 0.1, /*session_id=*/0);
+    addScans(15.0, 15.0, 0.1, /*session_id=*/0);
     ASSERT_TRUE(smapper_.setRemapping(
       makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
     ASSERT_EQ(smapper_.getRemapping()->current_session_id, 1);
@@ -696,6 +700,82 @@ TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
   EXPECT_EQ(cellAt(grid.get(), 4.5, 0.0), karto::GridStates_Occupied); // session 1 drew inside bbox
   EXPECT_EQ(cellAt(grid.get(), 4.0, 0.5), karto::GridStates_Unknown);  // inside bbox, no ray here
 }
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Suite C — ownership image layering order
+//
+// buildOwnershipImage paints session 0 everywhere, then each historical
+// session's polygon in ascending session_id order (std::map ordering),
+// then the current remapping polygon last.  Higher-id sessions must
+// therefore overwrite lower-id sessions in overlapping cells, and the
+// current session must overwrite every historical session in cells it
+// claims.  getOwnerAtWorldPosition is queried directly — no scans are
+// needed because the ownership image is built purely from polygons.
+// ═════════════════════════════════════════════════════════════════════════════
+
+TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
+{
+  mapper_utils::SMapper smapper;
+
+  auto rect = [](double x1, double y1, double x2, double y2) {
+    return std::vector<karto::Vector2<kt_double>>{
+      {x1, y1}, {x2, y1}, {x2, y2}, {x1, y2}};
+  };
+
+  // Configure the current remapping polygon first — node_labels_ is empty
+  // at this point, so setRemapping assigns current_session_id = 1.
+  ASSERT_TRUE(smapper.setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
+
+  // Inject historical labels with two overlapping session polygons.
+  // setAllLabels recomputes current_session_id to max(existing) + 1 = 3.
+  std::unordered_map<int, slam_toolbox::SessionLabel> labels;
+  {
+    slam_toolbox::SessionLabel s1;
+    s1.session_id = 1;
+    s1.polygon = rect(0.0, 0.0, 4.0, 4.0);
+    labels[101] = s1;
+  }
+  {
+    slam_toolbox::SessionLabel s2;
+    s2.session_id = 2;
+    s2.polygon = rect(2.0, 0.0, 6.0, 4.0);
+    labels[102] = s2;
+  }
+  smapper.setAllLabels(labels);
+  ASSERT_EQ(smapper.getRemapping()->current_session_id, 3);
+
+  // World bounds [-2, 10] × [-2, 6] at 1m resolution.  Covers every test
+  // point below with room to spare.
+  smapper.buildOwnershipImage(
+    /*width=*/12, /*height=*/8,
+    karto::Vector2<kt_double>(-2.0, -2.0),
+    /*resolution=*/1.0);
+
+  auto owner = [&](double x, double y) {
+    return smapper.getOwnerAtWorldPosition(karto::Vector2<kt_double>(x, y));
+  };
+
+  // Query points land on specific grid cells.  Karto's WorldToGrid rounds
+  // half-away-from-zero, not floor; with offset (-2, -2) at resolution 1.0
+  // an integer world x=N lands unambiguously on grid cell (N+2).
+
+  // Cell (3, 3) — inside session 1 only.
+  EXPECT_EQ(owner(1.0, 1.0), 1);
+
+  // Cell (4, 3) — inside sessions 1 AND 2 (not current).  Higher-id wins.
+  EXPECT_EQ(owner(2.0, 1.0), 2);
+
+  // Cell (6, 3) — inside all three (s1, s2, current).  Current overwrites.
+  EXPECT_EQ(owner(4.0, 1.0), 3);
+
+  // Cell (8, 3) — inside s2 only (beyond current's right edge at grid 7).
+  EXPECT_EQ(owner(6.0, 1.0), 2);
+
+  // Cell (11, 3) — outside every polygon, base session 0 survives.
+  EXPECT_EQ(owner(9.0, 1.0), 0);
+}
+
 
 int main(int argc, char** argv)
 {

@@ -142,6 +142,28 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
 }
 
 /*****************************************************************************/
+void SlamToolbox::installLoopClosureRemappingFilter()
+/*****************************************************************************/
+{
+  if (!candidate_selector_) return;
+
+  // Filter candidate scans whose recorded session no longer owns the cell at
+  // their position — i.e. a later remapping session claimed the area.  The
+  // lambda captures `this`, not smapper_, so it survives mapper replacement
+  // during deserialization.
+  candidate_selector_->setCandidateFilter(
+    [this](karto::LocalizedRangeScan* pScan) -> bool
+    {
+      const slam_toolbox::SessionLabel* label =
+        smapper_->getLabel(pScan->GetUniqueId());
+      const int scan_sid = label ? label->session_id : 0;
+      const int owner = smapper_->getOwnerAtWorldPosition(
+        pScan->GetCorrectedPose().GetPosition());
+      return scan_sid != owner;
+    });
+}
+
+/*****************************************************************************/
 void SlamToolbox::setParams(ros::NodeHandle& private_nh)
 /*****************************************************************************/
 {
@@ -257,6 +279,7 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
           ROS_INFO("SlamToolbox: remapping configured (world) — session_id=%d "
                    "(auto), %zu-vertex polygon.",
                    smapper_->getRemapping()->current_session_id, polygon.size());
+          installLoopClosureRemappingFilter();
         }
       }
       else if (units == "pixels")
@@ -970,22 +993,8 @@ bool SlamToolbox::deserializePoseGraphCallback(
   // loadSerializedPoseGraph so old-session nodes stay pinned here.
   solver_->Compute();
 
-  // Wire loop closure candidate filter now that labels are available.
-  // Candidates whose session_id doesn't match the ownership image at their
-  // position are skipped — they belong to a superseded remapping session.
-  if (smapper_->getRemapping().has_value() && candidate_selector_)
-  {
-    candidate_selector_->setCandidateFilter(
-      [this](karto::LocalizedRangeScan* pScan) -> bool
-      {
-        const slam_toolbox::SessionLabel* label =
-          smapper_->getLabel(pScan->GetUniqueId());
-        const int scan_sid = label ? label->session_id : 0;
-        const int owner = smapper_->getOwnerAtWorldPosition(
-          pScan->GetCorrectedPose().GetPosition());
-        return scan_sid != owner;
-      });
-  }
+  // Labels are now loaded, so the filter has enough context to run.
+  installLoopClosureRemappingFilter();
 
   updateMap();
 

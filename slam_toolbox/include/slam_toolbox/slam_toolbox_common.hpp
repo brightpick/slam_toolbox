@@ -103,6 +103,11 @@ protected:
   bool pauseNewMeasurementsCallback(slam_toolbox_msgs::Pause::Request& req,
     slam_toolbox_msgs::Pause::Response& resp);
 
+  // Attach the remap-aware filter to the loop closure selector.  Safe to call
+  // repeatedly; the filter uses getOwnerAtWorldPosition which returns session
+  // 0 when no ownership image is present, so unfiltered flows see no change.
+  void installLoopClosureRemappingFilter();
+
   // ROS-y-ness
   ros::NodeHandle nh_;
   std::unique_ptr<tf2_ros::Buffer> tf_;

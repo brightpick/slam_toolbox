@@ -29,6 +29,7 @@
 #include <karto_sdk/Mapper.h>
 #include <sys/stat.h>
 #include <yaml-cpp/yaml.h>
+#include "slam_toolbox/polygon_fill.hpp"
 #include "slam_toolbox/session_label.hpp"
 
 namespace serialization
@@ -145,6 +146,13 @@ inline bool loadLabelsFromFile(const std::string& filename,
       {
         ROS_ERROR("serialization: session %d polygon has %zu vertex(es) — "
                   "at least 3 required, session skipped.", sid, polygon.size());
+        continue;
+      }
+
+      if (!slam_toolbox::polygon_fill::isSimplePolygon(polygon))
+      {
+        ROS_ERROR("serialization: session %d polygon is self-intersecting — "
+                  "session skipped.", sid);
         continue;
       }
 

@@ -121,13 +121,9 @@ TEST(FillSimplePolygonTest, AxisAlignedRectangleFillsExactly)
 
 TEST(FillSimplePolygonTest, TriangleFillsExpectedCells)
 {
-  // Triangle with vertices (0,0), (4,0), (0,4).  Scanline y=0 spans
-  // x=0 ..4, but y=0 is only included if the edge rule counts it.
-  // Bottom edge (0,0)->(4,0) is horizontal → skipped.  Left edge
-  // (4,0)->(0,4): py=0, qy=4 → counts y=0 (0 <= 0 < 4).  Right edge
-  // (0,4)->(0,0): py=4, qy=0 → counts y=0 via (qy <= y && py > y).
-  // Wait — left and right edges actually differ for this triangle;
-  // concrete cell checks below drive the expectation.
+  // Triangle with vertices (0,0), (4,0), (0,4).  The bottom edge is
+  // horizontal and skipped by the scanline fill; the per-cell assertions
+  // below are the spec for what the half-open edge rule must fill.
   TestGrid grid(6, 6, 6, 0);
   fillSimplePolygon<kt_int32s>(
     grid.data.data(), grid.width, grid.height, grid.widthStep,
