@@ -110,7 +110,7 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   std::vector<karto::Vector2<kt_double>> polygon{
     {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
   ASSERT_TRUE(smapper.sessionState().setRemapping(polygon));
-  ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 1);
+  ASSERT_EQ(smapper.sessionState().currentSessionId(), 1);
 
   smapper.sessionState().registerNode(2);
 
@@ -118,7 +118,7 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   solver_plugins::CeresSolver solver;
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
+      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 
   // AddNode order: node 0 first so it becomes first_node_
@@ -201,7 +201,7 @@ TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
   solver_plugins::CeresSolver solver;
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
+      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 
   solver.AddNode(v0);

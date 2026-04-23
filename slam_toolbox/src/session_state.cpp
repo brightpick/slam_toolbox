@@ -38,10 +38,9 @@ void SessionState::setAll(const NodeSessionMap& node_session_ids,
 
 void SessionState::reconcileRemapping()
 {
-  if (!remapping_) return;
-  remapping_->current_session_id = computeNextSessionId();
-  current_session_id_ = remapping_->current_session_id;
-  session_polygons_[remapping_->current_session_id] = remapping_->current_polygon;
+  if (!remapping_polygon_) return;
+  current_session_id_ = computeNextSessionId();
+  session_polygons_[current_session_id_] = *remapping_polygon_;
 }
 
 // ---- Remapping config ----
@@ -70,22 +69,18 @@ bool SessionState::setRemapping(Polygon polygon)
     return false;
   }
 
-  RemappingConfig cfg;
-  cfg.current_session_id = computeNextSessionId();
-  cfg.current_polygon = std::move(polygon);
-
   // Tag new scans with the computed session_id and record the polygon so
   // it is serialized to .labels on save.
-  current_session_id_ = cfg.current_session_id;
-  session_polygons_[cfg.current_session_id] = cfg.current_polygon;
-  remapping_ = std::move(cfg);
+  current_session_id_ = computeNextSessionId();
+  session_polygons_[current_session_id_] = polygon;
+  remapping_polygon_ = std::move(polygon);
   return true;
 }
 
 bool SessionState::isRemappingNode(int node_id) const
 {
-  if (!remapping_) return false;
-  return getSessionId(node_id) == remapping_->current_session_id;
+  if (!remapping_polygon_) return false;
+  return getSessionId(node_id) == current_session_id_;
 }
 
 // ---- Ownership image ----
@@ -93,11 +88,11 @@ bool SessionState::isRemappingNode(int node_id) const
 void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                                        kt_double resolution)
 {
-  if (!remapping_) return;
+  if (!remapping_polygon_) return;
   ownership_image_.build(target_offset, resolution,
                          session_polygons_,
-                         remapping_->current_session_id,
-                         remapping_->current_polygon);
+                         current_session_id_,
+                         *remapping_polygon_);
 }
 
 }  // namespace slam_toolbox

@@ -775,7 +775,7 @@ void SlamToolbox::loadSerializedPoseGraph(
   }
 
   // NOTE: solver_->Compute() is deliberately NOT called here.  The fixed-node
-  // predicate consults smapper_->sessionState().getRemapping(), which is only populated
+  // predicate consults smapper_->sessionState().getRemappingPolygon(), which is only populated
   // after this function returns — in the pending-pixel-polygon resolution
   // branch of deserializePoseGraphCallback.  Running Compute here would
   // leave every loaded node unpinned (apart from first_node_), letting the

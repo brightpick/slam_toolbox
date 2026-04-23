@@ -76,7 +76,7 @@ void RemappingConfigurator::loadFromRosParams(
     {
       ROS_INFO("RemappingConfigurator: remapping configured (world) — "
                "session_id=%d (auto), %zu-vertex polygon.",
-               smapper.sessionState().getRemapping()->current_session_id, polygon.size());
+               smapper.sessionState().currentSessionId(), polygon.size());
       installLoopClosureFilter(selector, smapper);
     }
   }
@@ -133,7 +133,7 @@ void RemappingConfigurator::resolvePendingPolygon(
       ROS_INFO("RemappingConfigurator: remapping resolved from pixels — "
                "session_id=%d (auto), %zu-vertex polygon (grid %dx%d, "
                "offset [%.3f, %.3f], resolution %.3f)",
-               smapper.sessionState().getRemapping()->current_session_id,
+               smapper.sessionState().currentSessionId(),
                world_poly.size(),
                width, height, offset.GetX(), offset.GetY(), resolution);
       installLoopClosureFilter(selector, smapper);
@@ -147,7 +147,7 @@ void installFixedPosePredicate(karto::ScanSolver& solver,
 {
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
+      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 }
 

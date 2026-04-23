@@ -43,23 +43,16 @@ constexpr int kBaseSessionId = 0;
 class SessionState
 {
 public:
-  // Configuration for the active remapping session.
-  // current_session_id is computed automatically by setRemapping() as
-  // max(existing session_id) + 1 — it is never set by callers.
-  // current_polygon is the area to re-map.  Must be a simple polygon
-  // (edges don't cross themselves); non-convex is allowed.
-  // Historical sessions are derived from the .labels file.
-  struct RemappingConfig
-  {
-    int current_session_id;
-    Polygon current_polygon;
-  };
-
   // ---- Session ids ----
 
   // Session id assigned to new scans registered via registerNode().
   void setCurrentSessionId(int session_id);
   void registerNode(int node_id);
+
+  // Id of the session new scans are currently tagged with — equal to the
+  // remapping session id while remapping is active, kBaseSessionId on a
+  // fresh start.
+  int currentSessionId() const { return current_session_id_; }
 
   // Session id for `node_id`, or kBaseSessionId if unknown — new scans on a
   // fresh map and nodes from no-labels .posegraph files both land here.
@@ -69,7 +62,7 @@ public:
   const SessionPolygonMap& getAllSessionPolygons() const { return session_polygons_; }
 
   // Replace both maps in one shot (used after deserialization).  Does NOT
-  // touch the current remapping config — if a caller configured remapping
+  // touch the current remapping polygon — if a caller configured remapping
   // (via setRemapping) before historical sessions were visible, it must
   // invoke reconcileRemapping() afterwards to pick a non-colliding
   // session id based on the just-loaded data.
@@ -87,13 +80,14 @@ public:
   // Configure remapping with a simple polygon (edges must not cross
   // themselves; non-convex shapes are allowed).  Returns false and leaves
   // remapping unchanged if the polygon has < 3 vertices or self-intersects.
-  // The session_id is computed as one more than the highest session_id
-  // currently present, and is written to both the RemappingConfig and the
-  // current session id so subsequent registerNode() calls tag new scans
-  // with it.  The polygon is also recorded in session_polygons so it is
-  // serialized to .labels on save.
+  // The session id is assigned automatically as max(existing session_id)+1
+  // and exposed via currentSessionId(); subsequent registerNode() calls tag
+  // new scans with it.  The polygon is also recorded in session_polygons so
+  // it is serialized to .labels on save.
   bool setRemapping(Polygon polygon);
-  const std::optional<RemappingConfig>& getRemapping() const { return remapping_; }
+
+  // Active remapping polygon, if one is configured.
+  const std::optional<Polygon>& getRemappingPolygon() const { return remapping_polygon_; }
 
   // Returns true if the node belongs to the current remapping session.
   bool isRemappingNode(int node_id) const;
@@ -101,7 +95,7 @@ public:
   // ---- Ownership image ----
 
   // Build the ownership image from session_polygons + current remapping
-  // config.  The image sizes itself to the polygon union bbox; `target_offset`
+  // polygon.  The image sizes itself to the polygon union bbox; `target_offset`
   // anchors its origin so target-grid cell indices remain valid in it.
   // No-op when no remapping is active.
   void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
@@ -115,8 +109,8 @@ private:
 
   NodeSessionMap node_session_ids_;
   SessionPolygonMap session_polygons_;
-  int current_session_id_{0};
-  std::optional<RemappingConfig> remapping_;
+  int current_session_id_{kBaseSessionId};
+  std::optional<Polygon> remapping_polygon_;
   OwnershipImage ownership_image_;
 };
 

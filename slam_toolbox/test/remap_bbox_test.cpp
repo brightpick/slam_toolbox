@@ -544,7 +544,7 @@ TEST(SMapperPolygonValidationTest, SelfIntersectingPolygonIsRejected)
     {0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}
   };
   EXPECT_FALSE(smapper.sessionState().setRemapping(bowtie));
-  EXPECT_FALSE(smapper.sessionState().getRemapping().has_value());
+  EXPECT_FALSE(smapper.sessionState().getRemappingPolygon().has_value());
 }
 
 TEST(SMapperPolygonValidationTest, TooFewVerticesIsRejected)
@@ -552,7 +552,7 @@ TEST(SMapperPolygonValidationTest, TooFewVerticesIsRejected)
   mapper_utils::SMapper smapper;
   std::vector<karto::Vector2<kt_double>> line{{0.0, 0.0}, {1.0, 0.0}};
   EXPECT_FALSE(smapper.sessionState().setRemapping(line));
-  EXPECT_FALSE(smapper.sessionState().getRemapping().has_value());
+  EXPECT_FALSE(smapper.sessionState().getRemappingPolygon().has_value());
 }
 
 
@@ -611,7 +611,7 @@ protected:
     addScans(15.0, 15.0, 0.1, /*session_id=*/0);
     ASSERT_TRUE(smapper_.sessionState().setRemapping(
       makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
-    ASSERT_EQ(smapper_.sessionState().getRemapping()->current_session_id, 1);
+    ASSERT_EQ(smapper_.sessionState().currentSessionId(), 1);
   }
 
   void TearDown() override
@@ -749,7 +749,7 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
     {2, rect(2.0, 0.0, 6.0, 4.0)}};
   smapper.sessionState().setAll(node_sessions, session_polygons);
   smapper.sessionState().reconcileRemapping();
-  ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 3);
+  ASSERT_EQ(smapper.sessionState().currentSessionId(), 3);
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to
   // the polygon union bbox.  Queries outside the image fall back to

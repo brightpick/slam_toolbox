@@ -64,8 +64,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 {
   const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
 
-  const auto& remapping = session_.getRemapping();
-  if (!remapping)
+  if (!session_.getRemappingPolygon())
   {
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
@@ -77,11 +76,12 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   // would shift its origin (sub-pixel), which ripples into Bresenham
   // differences on every cell and makes the diff outside the polygon look
   // noisy even though the filter is working.
+  const int current_session_id = session_.currentSessionId();
   karto::LocalizedRangeScanVector base_scans;
   base_scans.reserve(scans.size());
   for (auto* s : scans)
   {
-    if (session_.getSessionId(s->GetUniqueId()) != remapping->current_session_id)
+    if (session_.getSessionId(s->GetUniqueId()) != current_session_id)
     {
       base_scans.push_back(s);
     }
