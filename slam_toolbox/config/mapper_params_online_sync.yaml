@@ -73,26 +73,6 @@ minimum_angle_penalty: 0.9
 minimum_distance_penalty: 0.5
 use_response_expansion: true
 
-# Spatial remapping is not configured via this YAML.  It is a per-run
-# operational flag set from the CLI:
-#
-#   rosrun slam_toolbox sync_slam_toolbox_node \
-#     _remapping_polygon:="[[px0,py0],[px1,py1],[px2,py2],...]"
-#     # default units: pixels (PGM convention, py=0 at top of image)
-#
-#   rosrun slam_toolbox sync_slam_toolbox_node \
-#     _remapping_polygon:="[[x0,y0],[x1,y1],[x2,y2],...]" \
-#     _remapping_polygon_units:="world"
-#
-# Polygon must be a simple closed ring (edges don't cross themselves);
-# convex and non-convex shapes are both accepted.  Pixel-coord polygons
-# are resolved to world coords after `deserialize_map` loads the existing
-# scans (conversion needs the grid height/offset).  World-coord polygons
-# take effect immediately.  In either case a new session_id is assigned
-# automatically as max(session_id in .labels) + 1.
-#
-# Scans from the new session may only draw inside the polygon; every
-# historical session only inside its own polygon; cells outside every
-# polygon are drawn by session-0 scans only.  Rays are clipped at the
-# boundary, not dropped.  Omit `_remapping_polygon` to run in standard
-# mapping mode (all new scans are session 0).
+# Spatial remapping (`_remapping_polygon`) is a per-run CLI flag, not a
+# YAML param.  See mapper_params_offline.yaml for the full description;
+# substitute `sync_slam_toolbox_node` for the node binary name.

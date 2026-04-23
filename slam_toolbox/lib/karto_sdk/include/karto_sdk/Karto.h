@@ -4636,6 +4636,14 @@ namespace karto
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
 
+  template<typename T> class Grid;
+
+  // See definition below Grid.  Forward-declared so Grid<T>::TraceLine (whose
+  // body performs non-dependent name lookup at definition time) can call it.
+  inline bool IsOwnedBy(const Grid<kt_int32s>* pOwnership,
+                        const Vector2<kt_int32s>& pt,
+                        kt_int32s scanSessionId);
+
   /**
    * Defines a grid class
    */
@@ -5001,15 +5009,9 @@ namespace karto
           error -= deltaX;
         }
 
-        if (pOwnership)
-        {
-          Vector2<kt_int32s> pt(pointX, pointY);
-          if (!pOwnership->IsValidGridIndex(pt)) continue;
-          if (pOwnership->GetDataPointer()[pOwnership->GridIndex(pt, false)]
-              != scanSessionId) continue;
-        }
-
         Vector2<kt_int32s> gridIndex(pointX, pointY);
+        if (!IsOwnedBy(pOwnership, gridIndex, scanSessionId)) continue;
+
         if (IsValidGridIndex(gridIndex))
         {
           kt_int32s index = GridIndex(gridIndex, false);
@@ -5064,6 +5066,19 @@ namespace karto
 
   };  // Grid
   BOOST_SERIALIZATION_ASSUME_ABSTRACT(Grid)
+
+  // Returns true when the cell at `pt` is owned by `scanSessionId` (or when
+  // no ownership filter is active).  Cells outside the ownership grid are
+  // never owned.  Shared by Grid<T>::TraceLine and OccupancyGrid ray tracing.
+  inline bool IsOwnedBy(const Grid<kt_int32s>* pOwnership,
+                        const Vector2<kt_int32s>& pt,
+                        kt_int32s scanSessionId)
+  {
+    if (!pOwnership) return true;
+    if (!pOwnership->IsValidGridIndex(pt)) return false;
+    return pOwnership->GetDataPointer()[pOwnership->GridIndex(pt, false)]
+           == scanSessionId;
+  }
 
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -6380,19 +6395,10 @@ namespace karto
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
-          // Check ownership filter for endpoint.  Ownership image is
-          // expected to be sized identically to the target grid (that is an
-          // invariant of SMapper::buildOwnershipImage).  If a caller ever
-          // violates it the assert catches the logic error in debug builds.
-          if (pOwnership)
-          {
-            assert(pOwnership->IsValidGridIndex(gridTo));
-            if (pOwnership->GetDataPointer()[pOwnership->GridIndex(gridTo, false)]
-                != scanSessionId)
-            {
-              return true;
-            }
-          }
+          // Ownership image is expected to be sized identically to the
+          // target grid (slam_toolbox::OwnershipImage invariant).
+          assert(!pOwnership || pOwnership->IsValidGridIndex(gridTo));
+          if (!IsOwnedBy(pOwnership, gridTo, scanSessionId)) return true;
 
           kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
 

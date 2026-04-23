@@ -26,6 +26,15 @@ target_link_libraries(${PROJECT_NAME}_polygon_fill_test
     ${catkin_LIBRARIES}
 )
 
+catkin_add_gtest(${PROJECT_NAME}_labels_serialization_test
+    labels_serialization_test.cpp
+)
+
+target_link_libraries(${PROJECT_NAME}_labels_serialization_test
+    yaml-cpp
+    ${catkin_LIBRARIES}
+)
+
 find_package(rostest REQUIRED)
 
 add_rostest_gtest(${PROJECT_NAME}_ceres_fixed_test

@@ -36,8 +36,8 @@
 #include "slam_toolbox/get_pose_helper.hpp"
 #include "slam_toolbox/map_saver.hpp"
 #include "slam_toolbox/loop_closure_assistant.hpp"
+#include "slam_toolbox/remapping_configurator.hpp"
 
-#include <optional>
 #include <string>
 #include <map>
 #include <vector>
@@ -103,11 +103,6 @@ protected:
   bool pauseNewMeasurementsCallback(slam_toolbox_msgs::Pause::Request& req,
     slam_toolbox_msgs::Pause::Response& resp);
 
-  // Attach the remap-aware filter to the loop closure selector.  Safe to call
-  // repeatedly; the filter uses getOwnerAtWorldPosition which returns session
-  // 0 when no ownership image is present, so unfiltered flows see no change.
-  void installLoopClosureRemappingFilter();
-
   // ROS-y-ness
   ros::NodeHandle nh_;
   std::unique_ptr<tf2_ros::Buffer> tf_;
@@ -140,11 +135,7 @@ protected:
   std::unique_ptr<loop_closure_assistant::LoopClosureAssistant> closure_assistant_;
   std::unique_ptr<laser_utils::ScanHolder> scan_holder_;
 
-  // Pending remap polygon in PGM pixel coordinates, stashed in setParams
-  // and resolved to world coords after deserialization (which fixes the
-  // grid dimensions needed for the pixel→world conversion).
-  // PGM convention: py=0 at the top of the image, y increasing downward.
-  std::optional<std::vector<karto::Vector2<kt_double>>> pending_pixel_polygon_;
+  slam_toolbox::RemappingConfigurator remapping_configurator_;
 
   // Internal state
   std::vector<std::unique_ptr<boost::thread> > threads_;

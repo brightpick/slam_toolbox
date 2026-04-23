@@ -23,6 +23,7 @@
 #include "karto_sdk/Mapper.h"
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
+#include "slam_toolbox/ownership_image.hpp"
 #include "slam_toolbox/session_label.hpp"
 #include <memory>
 #include <optional>
@@ -98,7 +99,7 @@ public:
                            kt_double resolution);
 
   // Convenience: returns the ownership image pointer (may be null).
-  const karto::Grid<kt_int32s>* getOwnershipImage() const { return ownership_image_.get(); }
+  const karto::Grid<kt_int32s>* getOwnershipImage() const { return ownership_image_.grid(); }
 
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
@@ -109,7 +110,7 @@ private:
   std::unordered_map<int, slam_toolbox::SessionLabel> node_labels_;
   slam_toolbox::SessionLabel current_session_label_;
   std::optional<RemappingConfig> remapping_;
-  std::unique_ptr<karto::Grid<kt_int32s>> ownership_image_;
+  slam_toolbox::OwnershipImage ownership_image_;
 };
 
 } // end namespace
