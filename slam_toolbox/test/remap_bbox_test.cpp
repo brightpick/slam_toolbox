@@ -529,16 +529,16 @@ TEST(SMapperPolygonValidationTest, SelfIntersectingPolygonIsRejected)
   std::vector<karto::Vector2<kt_double>> bowtie{
     {0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}
   };
-  EXPECT_FALSE(smapper.setRemapping(bowtie));
-  EXPECT_FALSE(smapper.getRemapping().has_value());
+  EXPECT_FALSE(smapper.sessionState().setRemapping(bowtie));
+  EXPECT_FALSE(smapper.sessionState().getRemapping().has_value());
 }
 
 TEST(SMapperPolygonValidationTest, TooFewVerticesIsRejected)
 {
   mapper_utils::SMapper smapper;
   std::vector<karto::Vector2<kt_double>> line{{0.0, 0.0}, {1.0, 0.0}};
-  EXPECT_FALSE(smapper.setRemapping(line));
-  EXPECT_FALSE(smapper.getRemapping().has_value());
+  EXPECT_FALSE(smapper.sessionState().setRemapping(line));
+  EXPECT_FALSE(smapper.sessionState().getRemapping().has_value());
 }
 
 
@@ -572,12 +572,12 @@ protected:
   {
     slam_toolbox::SessionLabel label;
     label.session_id = session_id;
-    smapper_.setSessionLabel(label);
+    smapper_.sessionState().setSessionLabel(label);
     for (int i = 0; i < 3; ++i)
     {
       auto* scan = makeScan(/*id=*/0, ox, oy, range, kLaser, heading);
       mgr_->AddScan(scan);
-      smapper_.registerNode(scan->GetUniqueId());
+      smapper_.sessionState().registerNode(scan->GetUniqueId());
       scans_.push_back(scan);
     }
   }
@@ -597,9 +597,9 @@ protected:
   {
     addScans(-5.0, -5.0, 0.1, /*session_id=*/0);
     addScans(15.0, 15.0, 0.1, /*session_id=*/0);
-    ASSERT_TRUE(smapper_.setRemapping(
+    ASSERT_TRUE(smapper_.sessionState().setRemapping(
       makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
-    ASSERT_EQ(smapper_.getRemapping()->current_session_id, 1);
+    ASSERT_EQ(smapper_.sessionState().getRemapping()->current_session_id, 1);
   }
 
   void TearDown() override
@@ -710,7 +710,7 @@ TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
 // then the current remapping polygon last.  Higher-id sessions must
 // therefore overwrite lower-id sessions in overlapping cells, and the
 // current session must overwrite every historical session in cells it
-// claims.  getOwnerAtWorldPosition is queried directly — no scans are
+// claims.  OwnershipImage::ownerAtWorld is queried directly — no scans are
 // needed because the ownership image is built purely from polygons.
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -725,7 +725,7 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
 
   // Configure the current remapping polygon first — node_labels_ is empty
   // at this point, so setRemapping assigns current_session_id = 1.
-  ASSERT_TRUE(smapper.setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
+  ASSERT_TRUE(smapper.sessionState().setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
 
   // Inject historical labels with two overlapping session polygons.
   // setAllLabels recomputes current_session_id to max(existing) + 1 = 3.
@@ -742,18 +742,18 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
     s2.polygon = rect(2.0, 0.0, 6.0, 4.0);
     labels[102] = s2;
   }
-  smapper.setAllLabels(labels);
-  ASSERT_EQ(smapper.getRemapping()->current_session_id, 3);
+  smapper.sessionState().setAllLabels(labels);
+  ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 3);
 
   // World bounds [-2, 10] × [-2, 6] at 1m resolution.  Covers every test
   // point below with room to spare.
-  smapper.buildOwnershipImage(
+  smapper.sessionState().buildOwnershipImage(
     /*width=*/12, /*height=*/8,
     karto::Vector2<kt_double>(-2.0, -2.0),
     /*resolution=*/1.0);
 
   auto owner = [&](double x, double y) {
-    return smapper.getOwnerAtWorldPosition(karto::Vector2<kt_double>(x, y));
+    return smapper.sessionState().ownershipImage().ownerAtWorld(karto::Vector2<kt_double>(x, y));
   };
 
   // Query points land on specific grid cells.  Karto's WorldToGrid rounds

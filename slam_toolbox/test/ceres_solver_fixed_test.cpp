@@ -105,21 +105,21 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   //     the current session label so node 2 (registered next) is tagged session 1.
   // Polygon is arbitrary — ceres pinning only consults isRemappingNode.
   mapper_utils::SMapper smapper;
-  smapper.registerNode(0);
-  smapper.registerNode(1);
+  smapper.sessionState().registerNode(0);
+  smapper.sessionState().registerNode(1);
 
   std::vector<karto::Vector2<kt_double>> polygon{
     {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
-  ASSERT_TRUE(smapper.setRemapping(polygon));
-  ASSERT_EQ(smapper.getRemapping()->current_session_id, 1);
+  ASSERT_TRUE(smapper.sessionState().setRemapping(polygon));
+  ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 1);
 
-  smapper.registerNode(2);
+  smapper.sessionState().registerNode(2);
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.getRemapping().has_value() && !smapper.isRemappingNode(id);
+      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 
   // AddNode order: node 0 first so it becomes first_node_
@@ -194,15 +194,15 @@ TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
   auto* e02 = makeEdge(v0, v2, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(2.0, 0.0, 0.0));
 
   mapper_utils::SMapper smapper;
-  smapper.registerNode(0);
-  smapper.registerNode(1);
-  smapper.registerNode(2);
+  smapper.sessionState().registerNode(0);
+  smapper.sessionState().registerNode(1);
+  smapper.sessionState().registerNode(2);
   // setRemapping intentionally not called — default session label is session 0
 
   solver_plugins::CeresSolver solver;
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.getRemapping().has_value() && !smapper.isRemappingNode(id);
+      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 
   solver.AddNode(v0);

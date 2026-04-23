@@ -566,7 +566,7 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
       scan_holder_->addScan(*scan);
     }
 
-    smapper_->registerNode(range_scan->GetUniqueId());
+    smapper_->sessionState().registerNode(range_scan->GetUniqueId());
     setTransformFromPoses(range_scan->GetCorrectedPose(), karto_pose,
       scan->header.stamp, update_reprocessing_transform);
     dataset_->Add(range_scan);
@@ -664,7 +664,7 @@ bool SlamToolbox::serializePoseGraphCallback(
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
   serialization::write(filename, *smapper_->getMapper(), *dataset_,
-    smapper_->getAllLabels());
+    smapper_->sessionState().getAllLabels());
   return true;
 }
 
@@ -774,7 +774,7 @@ void SlamToolbox::loadSerializedPoseGraph(
   }
 
   // NOTE: solver_->Compute() is deliberately NOT called here.  The fixed-node
-  // predicate consults smapper_->getRemapping(), which is only populated
+  // predicate consults smapper_->sessionState().getRemapping(), which is only populated
   // after this function returns — in the pending-pixel-polygon resolution
   // branch of deserializePoseGraphCallback.  Running Compute here would
   // leave every loaded node unpinned (apart from first_node_), letting the
@@ -823,7 +823,7 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
-  smapper_->setAllLabels(labels);
+  smapper_->sessionState().setAllLabels(labels);
 
   remapping_configurator_.resolvePendingPolygon(
     *smapper_, resolution_, candidate_selector_.get());

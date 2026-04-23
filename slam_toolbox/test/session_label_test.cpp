@@ -41,7 +41,7 @@ TEST(SessionLabelTest, Roundtrip)
 TEST(SMapperLabelTest, GetLabelUnknownNodeReturnsNull)
 {
   mapper_utils::SMapper smapper;
-  EXPECT_EQ(smapper.getLabel(999), nullptr);
+  EXPECT_EQ(smapper.sessionState().getLabel(999), nullptr);
 }
 
 TEST(SMapperLabelTest, RegisterNodeAssignsCurrentLabel)
@@ -49,10 +49,10 @@ TEST(SMapperLabelTest, RegisterNodeAssignsCurrentLabel)
   mapper_utils::SMapper smapper;
   slam_toolbox::SessionLabel label;
   label.session_id = 3;
-  smapper.setSessionLabel(label);
-  smapper.registerNode(10);
+  smapper.sessionState().setSessionLabel(label);
+  smapper.sessionState().registerNode(10);
 
-  const slam_toolbox::SessionLabel* result = smapper.getLabel(10);
+  const slam_toolbox::SessionLabel* result = smapper.sessionState().getLabel(10);
   ASSERT_NE(result, nullptr);
   EXPECT_EQ(result->session_id, 3);
 }
@@ -63,18 +63,18 @@ TEST(SMapperLabelTest, RegisterMultipleNodesWithDifferentLabels)
 
   slam_toolbox::SessionLabel label1;
   label1.session_id = 1;
-  smapper.setSessionLabel(label1);
-  smapper.registerNode(1);
-  smapper.registerNode(2);
+  smapper.sessionState().setSessionLabel(label1);
+  smapper.sessionState().registerNode(1);
+  smapper.sessionState().registerNode(2);
 
   slam_toolbox::SessionLabel label2;
   label2.session_id = 2;
-  smapper.setSessionLabel(label2);
-  smapper.registerNode(3);
+  smapper.sessionState().setSessionLabel(label2);
+  smapper.sessionState().registerNode(3);
 
-  EXPECT_EQ(smapper.getLabel(1)->session_id, 1);
-  EXPECT_EQ(smapper.getLabel(2)->session_id, 1);
-  EXPECT_EQ(smapper.getLabel(3)->session_id, 2);
+  EXPECT_EQ(smapper.sessionState().getLabel(1)->session_id, 1);
+  EXPECT_EQ(smapper.sessionState().getLabel(2)->session_id, 1);
+  EXPECT_EQ(smapper.sessionState().getLabel(3)->session_id, 2);
 }
 
 TEST(SMapperLabelTest, GetAllLabelsReturnsAllRegistered)
@@ -82,11 +82,11 @@ TEST(SMapperLabelTest, GetAllLabelsReturnsAllRegistered)
   mapper_utils::SMapper smapper;
   slam_toolbox::SessionLabel label;
   label.session_id = 5;
-  smapper.setSessionLabel(label);
-  smapper.registerNode(10);
-  smapper.registerNode(20);
+  smapper.sessionState().setSessionLabel(label);
+  smapper.sessionState().registerNode(10);
+  smapper.sessionState().registerNode(20);
 
-  const auto& all = smapper.getAllLabels();
+  const auto& all = smapper.sessionState().getAllLabels();
   EXPECT_EQ(all.size(), 2u);
   EXPECT_EQ(all.at(10).session_id, 5);
   EXPECT_EQ(all.at(20).session_id, 5);
@@ -97,18 +97,18 @@ TEST(SMapperLabelTest, SetAllLabelsReplacesMap)
   mapper_utils::SMapper smapper;
   slam_toolbox::SessionLabel label;
   label.session_id = 1;
-  smapper.setSessionLabel(label);
-  smapper.registerNode(1);
+  smapper.sessionState().setSessionLabel(label);
+  smapper.sessionState().registerNode(1);
 
   std::unordered_map<int, slam_toolbox::SessionLabel> new_labels;
   slam_toolbox::SessionLabel new_label;
   new_label.session_id = 7;
   new_labels[100] = new_label;
-  smapper.setAllLabels(new_labels);
+  smapper.sessionState().setAllLabels(new_labels);
 
-  EXPECT_EQ(smapper.getLabel(1), nullptr);
-  ASSERT_NE(smapper.getLabel(100), nullptr);
-  EXPECT_EQ(smapper.getLabel(100)->session_id, 7);
+  EXPECT_EQ(smapper.sessionState().getLabel(1), nullptr);
+  ASSERT_NE(smapper.sessionState().getLabel(100), nullptr);
+  EXPECT_EQ(smapper.sessionState().getLabel(100)->session_id, 7);
 }
 
 int main(int argc, char** argv)

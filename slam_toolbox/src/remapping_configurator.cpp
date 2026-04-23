@@ -74,11 +74,11 @@ void RemappingConfigurator::loadFromRosParams(
 
   if (units == "world")
   {
-    if (smapper.setRemapping(polygon))
+    if (smapper.sessionState().setRemapping(polygon))
     {
       ROS_INFO("RemappingConfigurator: remapping configured (world) — "
                "session_id=%d (auto), %zu-vertex polygon.",
-               smapper.getRemapping()->current_session_id, polygon.size());
+               smapper.sessionState().getRemapping()->current_session_id, polygon.size());
       installLoopClosureFilter(selector, smapper);
     }
   }
@@ -130,12 +130,12 @@ void RemappingConfigurator::resolvePendingPolygon(
       const double wy = offset.GetY() + (height - 1 - v.GetY()) * resolution;
       world_poly.emplace_back(wx, wy);
     }
-    if (smapper.setRemapping(world_poly))
+    if (smapper.sessionState().setRemapping(world_poly))
     {
       ROS_INFO("RemappingConfigurator: remapping resolved from pixels — "
                "session_id=%d (auto), %zu-vertex polygon (grid %dx%d, "
                "offset [%.3f, %.3f], resolution %.3f)",
-               smapper.getRemapping()->current_session_id,
+               smapper.sessionState().getRemapping()->current_session_id,
                world_poly.size(),
                width, height, offset.GetX(), offset.GetY(), resolution);
       installLoopClosureFilter(selector, smapper);
@@ -150,7 +150,7 @@ void RemappingConfigurator::installFixedPosePredicate(
 {
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
-      return smapper.getRemapping().has_value() && !smapper.isRemappingNode(id);
+      return smapper.sessionState().getRemapping().has_value() && !smapper.sessionState().isRemappingNode(id);
     });
 }
 
@@ -163,9 +163,9 @@ void RemappingConfigurator::installLoopClosureFilter(
   selector->setCandidateFilter(
     [&smapper](karto::LocalizedRangeScan* pScan) -> bool
     {
-      const SessionLabel* label = smapper.getLabel(pScan->GetUniqueId());
+      const SessionLabel* label = smapper.sessionState().getLabel(pScan->GetUniqueId());
       const int scan_sid = label ? label->session_id : 0;
-      const int owner = smapper.getOwnerAtWorldPosition(
+      const int owner = smapper.sessionState().ownershipImage().ownerAtWorld(
         pScan->GetCorrectedPose().GetPosition());
       return scan_sid != owner;
     });

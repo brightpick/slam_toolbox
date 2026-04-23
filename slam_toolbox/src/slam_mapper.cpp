@@ -19,8 +19,6 @@
 /* Author: Steven Macenski */
 
 #include "slam_toolbox/slam_mapper.hpp"
-#include "slam_toolbox/polygon_fill.hpp"
-#include <algorithm>
 
 namespace mapper_utils
 {
@@ -66,7 +64,8 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 {
   const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
 
-  if (!remapping_)
+  const auto& remapping = session_.getRemapping();
+  if (!remapping)
   {
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
@@ -82,9 +81,9 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   base_scans.reserve(scans.size());
   for (auto* s : scans)
   {
-    const slam_toolbox::SessionLabel* label = getLabel(s->GetUniqueId());
+    const slam_toolbox::SessionLabel* label = session_.getLabel(s->GetUniqueId());
     const int sid = label ? label->session_id : 0;
-    if (sid != remapping_->current_session_id)
+    if (sid != remapping->current_session_id)
     {
       base_scans.push_back(s);
     }
@@ -92,7 +91,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
   karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
-  buildOwnershipImage(width, height, offset, resolution);
+  session_.buildOwnershipImage(width, height, offset, resolution);
 
   // Construct the grid directly with the base-scan bounds, then render ALL
   // scans through the ownership filter.  Do NOT use the static
@@ -102,86 +101,13 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
   result->CreateFromScans(
     scans,
-    ownership_image_.grid(),
+    session_.ownershipImage().grid(),
     [this](karto::LocalizedRangeScan* pScan) -> kt_int32s
     {
-      const slam_toolbox::SessionLabel* label = getLabel(pScan->GetUniqueId());
+      const slam_toolbox::SessionLabel* label = session_.getLabel(pScan->GetUniqueId());
       return label ? label->session_id : 0;
     });
   return result;
-}
-
-/*****************************************************************************/
-int SMapper::computeNextSessionId() const
-/*****************************************************************************/
-{
-  int max_sid = 0;
-  for (const auto& [node_id, label] : node_labels_)
-  {
-    max_sid = std::max(max_sid, label.session_id);
-  }
-  return max_sid + 1;
-}
-
-/*****************************************************************************/
-bool SMapper::setRemapping(std::vector<karto::Vector2<kt_double>> polygon)
-/*****************************************************************************/
-{
-  if (!slam_toolbox::polygon_fill::isSimplePolygon(polygon))
-  {
-    ROS_ERROR("SMapper::setRemapping: rejected polygon with %zu vertices — "
-              "it must have at least 3 vertices and must not self-intersect.",
-              polygon.size());
-    return false;
-  }
-
-  RemappingConfig cfg;
-  cfg.current_session_id = computeNextSessionId();
-  cfg.current_polygon = std::move(polygon);
-  remapping_ = cfg;
-
-  // Tag new scans with the computed session_id and carry the polygon on the
-  // label so it is serialized to .labels on save.
-  current_session_label_.session_id = cfg.current_session_id;
-  current_session_label_.polygon = cfg.current_polygon;
-  return true;
-}
-
-/*****************************************************************************/
-const std::optional<SMapper::RemappingConfig>& SMapper::getRemapping() const
-/*****************************************************************************/
-{
-  return remapping_;
-}
-
-/*****************************************************************************/
-bool SMapper::isRemappingNode(int unique_id) const
-/*****************************************************************************/
-{
-  if (!remapping_) return false;
-  const slam_toolbox::SessionLabel* label = getLabel(unique_id);
-  const int session_id = label ? label->session_id : 0;
-  return session_id == remapping_->current_session_id;
-}
-
-/*****************************************************************************/
-int SMapper::getOwnerAtWorldPosition(const karto::Vector2<kt_double>& position) const
-/*****************************************************************************/
-{
-  return ownership_image_.ownerAtWorld(position);
-}
-
-/*****************************************************************************/
-void SMapper::buildOwnershipImage(kt_int32s width, kt_int32s height,
-                                   const karto::Vector2<kt_double>& offset,
-                                   kt_double resolution)
-/*****************************************************************************/
-{
-  if (!remapping_) return;
-  ownership_image_.build(width, height, offset, resolution,
-                         node_labels_,
-                         remapping_->current_session_id,
-                         remapping_->current_polygon);
 }
 
 /*****************************************************************************/
@@ -409,47 +335,5 @@ void SMapper::Reset()
   mapper_->Reset();
   return;
 }
-
-void SMapper::setSessionLabel(const slam_toolbox::SessionLabel& label)
-{
-  current_session_label_ = label;
-}
-
-void SMapper::registerNode(int unique_id)
-{
-  node_labels_[unique_id] = current_session_label_;
-}
-
-const slam_toolbox::SessionLabel* SMapper::getLabel(int unique_id) const
-{
-  auto it = node_labels_.find(unique_id);
-  if (it == node_labels_.end())
-  {
-    return nullptr;
-  }
-  return &it->second;
-}
-
-const std::unordered_map<int, slam_toolbox::SessionLabel>& SMapper::getAllLabels() const
-{
-  return node_labels_;
-}
-
-void SMapper::setAllLabels(
-  const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
-{
-  node_labels_ = labels;
-
-  // If remapping was configured before labels were loaded (typical startup
-  // path: setParams → deserialize), recompute current_session_id now that the
-  // real label history is visible.  Loaded labels may include session_ids
-  // larger than whatever we computed against an empty map.
-  if (remapping_)
-  {
-    remapping_->current_session_id = computeNextSessionId();
-    current_session_label_.session_id = remapping_->current_session_id;
-  }
-}
-
 
 } // end namespace
