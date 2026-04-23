@@ -137,6 +137,21 @@ std::unique_ptr<karto::Grid<kt_int32s>> buildTestOwnership(
 const auto kAllowInside  = [](karto::LocalizedRangeScan*) -> kt_int32s { return kRemapSessionId; };
 const auto kAllowOutside = [](karto::LocalizedRangeScan*) -> kt_int32s { return kBaseSessionId; };
 
+// Build a (scan, cell) predicate that mirrors the production contract: a
+// scan writes a cell iff its session id matches the ownership value at that
+// cell.  Cells outside the ownership grid are session 0.
+auto makeSessionPredicate(karto::Grid<kt_int32s>* ownership,
+  std::function<kt_int32s(karto::LocalizedRangeScan*)> fnGetSessionId)
+{
+  return [ownership, fnGetSessionId = std::move(fnGetSessionId)]
+         (karto::LocalizedRangeScan* scan, const karto::Vector2<kt_int32s>& pt)
+  {
+    const int scanSid = fnGetSessionId(scan);
+    if (!ownership->IsValidGridIndex(pt)) return scanSid == 0;
+    return ownership->GetDataPointer()[ownership->GridIndex(pt, false)] == scanSid;
+  };
+}
+
 } // namespace
 
 
@@ -185,9 +200,9 @@ protected:
       const std::function<kt_int32s(karto::LocalizedRangeScan*)>& fnGetSessionId)
   {
     auto ownership = buildTestOwnership(scans, polygon_);
+    auto pred = makeSessionPredicate(ownership.get(), fnGetSessionId);
     return std::unique_ptr<karto::OccupancyGrid>(
-      karto::OccupancyGrid::CreateFromScans(scans, kResolution,
-                                            ownership.get(), fnGetSessionId));
+      karto::OccupancyGrid::CreateFromScans(scans, kResolution, pred));
   }
 
   // Same as createFiltered but with an arbitrary polygon (rotated, star, ...).
@@ -197,9 +212,9 @@ protected:
       const std::function<kt_int32s(karto::LocalizedRangeScan*)>& fnGetSessionId)
   {
     auto ownership = buildTestOwnership(scans, polygon);
+    auto pred = makeSessionPredicate(ownership.get(), fnGetSessionId);
     return std::unique_ptr<karto::OccupancyGrid>(
-      karto::OccupancyGrid::CreateFromScans(scans, kResolution,
-                                            ownership.get(), fnGetSessionId));
+      karto::OccupancyGrid::CreateFromScans(scans, kResolution, pred));
   }
 
   const std::string kLaser{"filter_laser"};
@@ -707,7 +722,7 @@ TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
 // then the current remapping polygon last.  Higher-id sessions must
 // therefore overwrite lower-id sessions in overlapping cells, and the
 // current session must overwrite every historical session in cells it
-// claims.  OwnershipImage::ownerAtWorld is queried directly — no scans are
+// claims.  OwnershipImage::sessionAtWorld is queried directly — no scans are
 // needed because the ownership image is built purely from polygons.
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -736,12 +751,12 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to
   // the polygon union bbox.  Queries outside the image fall back to
-  // session 0 via ownerAtWorld's bounds check.
+  // session 0 via sessionAtWorld's bounds check.
   smapper.sessionState().buildOwnershipImage(
     karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0);
 
   auto owner = [&](double x, double y) {
-    return smapper.sessionState().ownershipImage().ownerAtWorld(karto::Vector2<kt_double>(x, y));
+    return smapper.sessionState().ownershipImage().sessionAtWorld(karto::Vector2<kt_double>(x, y));
   };
 
   // Query points land on specific grid cells.  Karto's WorldToGrid rounds

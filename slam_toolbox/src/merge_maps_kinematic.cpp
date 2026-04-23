@@ -61,11 +61,8 @@ bool MergeMapsKinematic::addSubmapCallback(
 {
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
-  slam_toolbox::labels_serialization::NodeSessionMap node_session_ids;
-  slam_toolbox::labels_serialization::SessionPolygonMap session_polygons;
 
-  if (!serialization::read(req.filename, *mapper, *dataset,
-                           node_session_ids, session_polygons))
+  if (!serialization::read(req.filename, *mapper, *dataset))
   {
     ROS_ERROR("addSubmapCallback: Failed to read "
       "file: %s.", req.filename.c_str());

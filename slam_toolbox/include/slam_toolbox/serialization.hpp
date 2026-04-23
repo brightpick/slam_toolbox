@@ -55,11 +55,11 @@ inline void write(const std::string& filename,
     filename + std::string(".labels"), node_session_ids, session_polygons);
 }
 
+// Load the posegraph + dataset.  Does NOT touch the sidecar .labels file;
+// use the 5-arg overload when you need session labels.
 inline bool read(const std::string& filename,
   karto::Mapper& mapper,
-  karto::Dataset& dataset,
-  slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
-  slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
+  karto::Dataset& dataset)
 {
   if (!fileExists(filename + std::string(".posegraph")))
   {
@@ -79,12 +79,22 @@ inline bool read(const std::string& filename,
       "Exception: %s", e.what());
     return false;
   }
+  return true;
+}
+
+// Load the posegraph + dataset AND the sidecar .labels file.
+inline bool read(const std::string& filename,
+  karto::Mapper& mapper,
+  karto::Dataset& dataset,
+  slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
+  slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
+{
+  if (!read(filename, mapper, dataset)) return false;
 
   node_session_ids.clear();
   session_polygons.clear();
   slam_toolbox::labels_serialization::load(
     filename + std::string(".labels"), node_session_ids, session_polygons);
-
   return true;
 }
 

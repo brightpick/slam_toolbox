@@ -65,7 +65,7 @@ void OwnershipImage::build(
   // (Option A alignment).  Width/height include the last painted cell:
   // polygon_fill::fillSimplePolygon paints up to `floor(max_grid_coord)`,
   // so the required width is `floor(max_grid_coord) + 1`.  Cells outside
-  // the resulting image are implicitly session 0 — see karto::IsOwnedBy.
+  // the resulting image are implicitly session 0 — see sessionAt().
   const kt_int32s width = std::max<kt_int32s>(
     0, static_cast<kt_int32s>(
          std::floor((bbox.max_x - target_offset.GetX()) / resolution)) + 1);
@@ -120,13 +120,17 @@ void OwnershipImage::build(
   paintPolygon(currentSessionId, currentPolygon);
 }
 
-int OwnershipImage::ownerAtWorld(const karto::Vector2<kt_double>& worldPos) const
+int OwnershipImage::sessionAt(const karto::Vector2<kt_int32s>& pt) const
 {
   if (!image_) return 0;
-  const karto::Vector2<kt_int32s> gridIdx =
-    image_->GetCoordinateConverter()->WorldToGrid(worldPos);
-  if (!image_->IsValidGridIndex(gridIdx)) return 0;
-  return image_->GetDataPointer()[image_->GridIndex(gridIdx, false)];
+  if (!image_->IsValidGridIndex(pt)) return 0;
+  return image_->GetDataPointer()[image_->GridIndex(pt, false)];
+}
+
+int OwnershipImage::sessionAtWorld(const karto::Vector2<kt_double>& worldPos) const
+{
+  if (!image_) return 0;
+  return sessionAt(image_->GetCoordinateConverter()->WorldToGrid(worldPos));
 }
 
 }  // namespace slam_toolbox

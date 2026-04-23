@@ -4636,13 +4636,12 @@ namespace karto
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
 
-  template<typename T> class Grid;
-
-  // See definition below Grid.  Forward-declared so Grid<T>::TraceLine (whose
-  // body performs non-dependent name lookup at definition time) can call it.
-  inline bool IsOwnedBy(const Grid<kt_int32s>* pOwnership,
-                        const Vector2<kt_int32s>& pt,
-                        kt_int32s scanSessionId);
+  // Default cell-inclusion predicate: accept every cell.  Used as the
+  // template default when callers don't supply a filter.
+  struct AlwaysAcceptCell
+  {
+    bool operator()(const Vector2<kt_int32s>&) const { return true; }
+  };
 
   /**
    * Defines a grid class
@@ -4950,14 +4949,14 @@ namespace karto
      * Increments all the grid cells from (x0, y0) to (x1, y1);
      * if applicable, apply f to each cell traced.
      *
-     * When pOwnership is non-null, only cells where the ownership value equals
-     * scanSessionId are incremented.  The Bresenham stepping is unchanged so
-     * no single-pixel divergence artefacts appear.
+     * `cellPredicate(cell)` returns true when a cell should be written.
+     * The Bresenham stepping is always identical regardless of the
+     * predicate, preventing single-pixel divergence artefacts.
      */
+    template <typename CellPred = AlwaysAcceptCell>
     void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1,
                    Functor* f = NULL,
-                   const Grid<kt_int32s>* pOwnership = nullptr,
-                   kt_int32s scanSessionId = 0)
+                   const CellPred& cellPredicate = CellPred{})
     {
       kt_bool steep = abs(y1 - y0) > abs(x1 - x0);
       if (steep)
@@ -5010,7 +5009,7 @@ namespace karto
         }
 
         Vector2<kt_int32s> gridIndex(pointX, pointY);
-        if (!IsOwnedBy(pOwnership, gridIndex, scanSessionId)) continue;
+        if (!cellPredicate(gridIndex)) continue;
 
         if (IsValidGridIndex(gridIndex))
         {
@@ -5066,21 +5065,6 @@ namespace karto
 
   };  // Grid
   BOOST_SERIALIZATION_ASSUME_ABSTRACT(Grid)
-
-  // Returns true when the cell at `pt` is owned by `scanSessionId` (or when
-  // no ownership filter is active).  Cells outside the ownership grid are
-  // implicitly owned by session 0 — that lets the grid shrink to the polygon
-  // bounding box without blocking base-session writes on the unpainted
-  // periphery.  Shared by Grid<T>::TraceLine and OccupancyGrid ray tracing.
-  inline bool IsOwnedBy(const Grid<kt_int32s>* pOwnership,
-                        const Vector2<kt_int32s>& pt,
-                        kt_int32s scanSessionId)
-  {
-    if (!pOwnership) return true;
-    if (!pOwnership->IsValidGridIndex(pt)) return scanSessionId == 0;
-    return pOwnership->GetDataPointer()[pOwnership->GridIndex(pt, false)]
-           == scanSessionId;
-  }
 
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -6081,18 +6065,24 @@ namespace karto
     }
 
   public:
+    // Default scan-cell predicate: accept every (scan, cell) pair.
+    struct AlwaysAcceptScanCell
+    {
+      bool operator()(LocalizedRangeScan*, const Vector2<kt_int32s>&) const { return true; }
+    };
+
     /**
      * Create an occupancy grid from the given scans.
      *
-     * When pOwnership and fnGetSessionId are provided, each scan only writes
-     * to cells it owns in the ownership image — enabling multi-session
-     * remapping without single-pixel artefacts.
+     * `scanCellPredicate(scan, cell)` returns true when that scan should
+     * write that cell — enables multi-session remapping without
+     * single-pixel artefacts.  Default accepts everything.
      */
+    template <typename ScanCellPred = AlwaysAcceptScanCell>
     static OccupancyGrid* CreateFromScans(
         const LocalizedRangeScanVector& rScans,
         kt_double resolution,
-        const Grid<kt_int32s>* pOwnership = nullptr,
-        const std::function<kt_int32s(LocalizedRangeScan*)>& fnGetSessionId = nullptr)
+        const ScanCellPred& scanCellPredicate = ScanCellPred{})
     {
       if (rScans.empty())
       {
@@ -6103,7 +6093,7 @@ namespace karto
       Vector2<kt_double> offset;
       ComputeDimensions(rScans, resolution, width, height, offset);
       OccupancyGrid* pOccupancyGrid = new OccupancyGrid(width, height, offset, resolution);
-      pOccupancyGrid->CreateFromScans(rScans, pOwnership, fnGetSessionId);
+      pOccupancyGrid->CreateFromScans(rScans, scanCellPredicate);
 
       return pOccupancyGrid;
     }
@@ -6266,13 +6256,14 @@ namespace karto
     /**
      * Create grid using scans.
      *
-     * When pOwnership and fnGetSessionId are provided, each scan only writes
-     * to cells it owns in the ownership image.
+     * `scanCellPredicate(scan, cell)` returns true when that scan should
+     * write that cell.  Default accepts everything (no filtering).  Runs
+     * inline — no per-cell indirect dispatch.
      */
-    virtual void CreateFromScans(
+    template <typename ScanCellPred = AlwaysAcceptScanCell>
+    void CreateFromScans(
         const LocalizedRangeScanVector& rScans,
-        const Grid<kt_int32s>* pOwnership = nullptr,
-        const std::function<kt_int32s(LocalizedRangeScan*)>& fnGetSessionId = nullptr)
+        const ScanCellPred& scanCellPredicate = ScanCellPred{})
     {
       m_pCellPassCnt->Resize(GetWidth(), GetHeight());
       m_pCellPassCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
@@ -6283,15 +6274,10 @@ namespace karto
       for (LocalizedRangeScan* pScan : rScans)
       {
         if (!pScan) continue;
-
-        if (pOwnership && fnGetSessionId)
-        {
-          AddScan(pScan, false, pOwnership, fnGetSessionId(pScan));
-        }
-        else
-        {
-          AddScan(pScan);
-        }
+        AddScan(pScan, false,
+          [&scanCellPredicate, pScan](const Vector2<kt_int32s>& pt) {
+            return scanCellPredicate(pScan, pt);
+          });
       }
 
       Update();
@@ -6300,20 +6286,19 @@ namespace karto
     /**
      * Adds the scan's information to this grid's counters.
      *
-     * When pOwnership is non-null, only cells where the ownership value
-     * matches scanSessionId are modified.  The Bresenham stepping is always
-     * identical, preventing single-pixel divergence artefacts.
+     * `cellPredicate(cell)` returns true when a cell should be written.
+     * The Bresenham stepping is always identical regardless of the
+     * predicate, preventing single-pixel divergence artefacts.
      *
      * @param pScan          scan to process
      * @param doUpdate       whether to immediately update occupancy values
-     * @param pOwnership     optional ownership image for spatial filtering
-     * @param scanSessionId  session that owns this scan (used with pOwnership)
+     * @param cellPredicate  optional cell-inclusion predicate
      * @return false if any endpoint fell off the grid
      */
-    virtual kt_bool AddScan(LocalizedRangeScan* pScan,
-                            kt_bool doUpdate = false,
-                            const Grid<kt_int32s>* pOwnership = nullptr,
-                            kt_int32s scanSessionId = 0)
+    template <typename CellPred = AlwaysAcceptCell>
+    kt_bool AddScan(LocalizedRangeScan* pScan,
+                    kt_bool doUpdate = false,
+                    const CellPred& cellPredicate = CellPred{})
     {
       LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
       const kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
@@ -6346,8 +6331,7 @@ namespace karto
           point.SetY(scanPosition.GetY() + ratio * dy);
         }
 
-        if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate,
-                       pOwnership, scanSessionId))
+        if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate, cellPredicate))
         {
           isAllInMap = false;
         }
@@ -6362,25 +6346,24 @@ namespace karto
      * Traces a beam from the start position to the end position marking
      * the bookkeeping arrays accordingly.
      *
-     * When pOwnership is non-null, only cells whose ownership value equals
-     * scanSessionId are modified (both pass-through and endpoint hit).  The
-     * Bresenham stepping is always identical regardless of the filter,
-     * preventing single-pixel divergence artefacts.
+     * `cellPredicate(cell)` returns true when a cell should be written
+     * (applies to both traced cells and the endpoint hit).  The Bresenham
+     * stepping is always identical regardless of the predicate, preventing
+     * single-pixel divergence artefacts.
      *
      * @param rWorldFrom start position of beam
      * @param rWorldTo end position of beam
      * @param isEndPointValid is the reading within the range threshold?
      * @param doUpdate whether to update the cells' occupancy status immediately
-     * @param pOwnership optional ownership image — only cells owned by scanSessionId are modified
-     * @param scanSessionId session that owns this scan (used with pOwnership)
+     * @param cellPredicate optional cell-inclusion predicate
      * @return returns false if an endpoint fell off the grid, otherwise true
      */
-    virtual kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
-                             const Vector2<kt_double>& rWorldTo,
-                             kt_bool isEndPointValid,
-                             kt_bool doUpdate = false,
-                             const Grid<kt_int32s>* pOwnership = nullptr,
-                             kt_int32s scanSessionId = 0)
+    template <typename CellPred = AlwaysAcceptCell>
+    kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
+                     const Vector2<kt_double>& rWorldTo,
+                     kt_bool isEndPointValid,
+                     kt_bool doUpdate = false,
+                     const CellPred& cellPredicate = CellPred{})
     {
       assert(m_pCellPassCnt != NULL && m_pCellHitsCnt != NULL);
 
@@ -6390,14 +6373,14 @@ namespace karto
       CellUpdater* pCellUpdater = doUpdate ? m_pCellUpdater : NULL;
       m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(),
                                 gridTo.GetX(), gridTo.GetY(),
-                                pCellUpdater, pOwnership, scanSessionId);
+                                pCellUpdater, cellPredicate);
 
       // for the end point
       if (isEndPointValid)
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
-          if (!IsOwnedBy(pOwnership, gridTo, scanSessionId)) return true;
+          if (!cellPredicate(gridTo)) return true;
 
           kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
 

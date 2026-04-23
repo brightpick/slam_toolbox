@@ -99,10 +99,10 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
   result->CreateFromScans(
     scans,
-    session_.ownershipImage().grid(),
-    [this](karto::LocalizedRangeScan* pScan) -> kt_int32s
+    [this](karto::LocalizedRangeScan* pScan, const karto::Vector2<kt_int32s>& pt)
     {
-      return session_.getSessionId(pScan->GetUniqueId());
+      return session_.ownershipImage().sessionAt(pt)
+          == session_.getSessionId(pScan->GetUniqueId());
     });
   return result;
 }

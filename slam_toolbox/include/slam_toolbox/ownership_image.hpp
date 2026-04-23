@@ -9,7 +9,7 @@
  * Alignment: the grid shares `offset` and `resolution` with the target
  * occupancy grid so target-grid cell indices can index into the ownership
  * image directly.  Cells OUTSIDE the ownership image are implicitly owned
- * by session 0 — that contract lives in karto::IsOwnedBy.
+ * by session 0 — `sessionAt()` encodes that contract.
  */
 
 #ifndef SLAM_TOOLBOX_OWNERSHIP_IMAGE_H_
@@ -31,20 +31,22 @@ public:
   // Historical sessions (entries in session_polygons whose session_id !=
   // currentSessionId) are painted first in session-id order, then
   // currentPolygon paints last so it wins every overlap.  Cells outside
-  // the resulting image are treated as session 0 by karto::IsOwnedBy.
+  // the resulting image are treated as session 0 by `sessionAt()`.
   void build(const karto::Vector2<kt_double>& target_offset,
              kt_double resolution,
              const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
              int currentSessionId,
              const std::vector<karto::Vector2<kt_double>>& currentPolygon);
 
-  // Session owning the cell at `worldPos`.  Returns 0 when no image is
-  // built or the position is out of bounds.
-  int ownerAtWorld(const karto::Vector2<kt_double>& worldPos) const;
+  // Session owning the cell at grid index `pt` (indices are in target-grid
+  // coords, which this image shares by virtue of using target_offset).
+  // Returns 0 when no image is built or the cell is out of bounds —
+  // unpainted periphery is implicitly session 0.
+  int sessionAt(const karto::Vector2<kt_int32s>& pt) const;
 
-  // Raw grid pointer (may be null).  Exposed for karto ray tracing, which
-  // needs the Grid API directly.
-  const karto::Grid<kt_int32s>* grid() const { return image_.get(); }
+  // Session owning the cell at world position `worldPos`.  Converts to
+  // grid coords then delegates to sessionAt.  Same return contract.
+  int sessionAtWorld(const karto::Vector2<kt_double>& worldPos) const;
 
   // Drop the image.
   void reset() { image_.reset(); }
