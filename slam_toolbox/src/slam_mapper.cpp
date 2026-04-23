@@ -63,12 +63,18 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 /*****************************************************************************/
 {
   const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
-
   if (!session_.getRemappingPolygon())
   {
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
+  return buildRemapGrid(scans, resolution);
+}
 
+/*****************************************************************************/
+karto::OccupancyGrid* SMapper::buildRemapGrid(
+  const karto::LocalizedRangeScanVector& scans, double resolution)
+/*****************************************************************************/
+{
   // Compute grid dimensions from BASE-SESSION scans only — scans that belong
   // to the current remapping session are excluded.  This keeps the occupancy
   // grid's footprint and origin locked to the previously-saved map, so the

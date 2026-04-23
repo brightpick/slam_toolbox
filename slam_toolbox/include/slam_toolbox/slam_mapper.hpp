@@ -60,6 +60,12 @@ protected:
   std::unique_ptr<karto::Mapper> mapper_;
 
 private:
+  // Builds an occupancy grid whose footprint is locked to the base-session
+  // scans and renders every scan through the session-ownership filter.  Used
+  // by getOccupancyGrid when a remapping polygon is active.
+  karto::OccupancyGrid* buildRemapGrid(
+    const karto::LocalizedRangeScanVector& scans, double resolution);
+
   slam_toolbox::SessionState session_;
 };
 
