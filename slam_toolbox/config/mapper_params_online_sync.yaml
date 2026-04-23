@@ -72,7 +72,3 @@ coarse_angle_resolution: 0.0349
 minimum_angle_penalty: 0.9
 minimum_distance_penalty: 0.5
 use_response_expansion: true
-
-# Spatial remapping (`_remapping_polygon`) is a per-run CLI flag, not a
-# YAML param.  See mapper_params_offline.yaml for the full description;
-# substitute `sync_slam_toolbox_node` for the node binary name.
