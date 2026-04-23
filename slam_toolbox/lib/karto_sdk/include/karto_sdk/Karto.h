@@ -5069,13 +5069,15 @@ namespace karto
 
   // Returns true when the cell at `pt` is owned by `scanSessionId` (or when
   // no ownership filter is active).  Cells outside the ownership grid are
-  // never owned.  Shared by Grid<T>::TraceLine and OccupancyGrid ray tracing.
+  // implicitly owned by session 0 — that lets the grid shrink to the polygon
+  // bounding box without blocking base-session writes on the unpainted
+  // periphery.  Shared by Grid<T>::TraceLine and OccupancyGrid ray tracing.
   inline bool IsOwnedBy(const Grid<kt_int32s>* pOwnership,
                         const Vector2<kt_int32s>& pt,
                         kt_int32s scanSessionId)
   {
     if (!pOwnership) return true;
-    if (!pOwnership->IsValidGridIndex(pt)) return false;
+    if (!pOwnership->IsValidGridIndex(pt)) return scanSessionId == 0;
     return pOwnership->GetDataPointer()[pOwnership->GridIndex(pt, false)]
            == scanSessionId;
   }
@@ -6395,9 +6397,6 @@ namespace karto
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
-          // Ownership image is expected to be sized identically to the
-          // target grid (slam_toolbox::OwnershipImage invariant).
-          assert(!pOwnership || pOwnership->IsValidGridIndex(gridTo));
           if (!IsOwnedBy(pOwnership, gridTo, scanSessionId)) return true;
 
           kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);

@@ -734,12 +734,11 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
   smapper.sessionState().setAll(node_sessions, session_polygons);
   ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 3);
 
-  // World bounds [-2, 10] × [-2, 6] at 1m resolution.  Covers every test
-  // point below with room to spare.
+  // Image anchors its origin at target_offset (-2, -2) and sizes itself to
+  // the polygon union bbox.  Queries outside the image fall back to
+  // session 0 via ownerAtWorld's bounds check.
   smapper.sessionState().buildOwnershipImage(
-    /*width=*/12, /*height=*/8,
-    karto::Vector2<kt_double>(-2.0, -2.0),
-    /*resolution=*/1.0);
+    karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0);
 
   auto owner = [&](double x, double y) {
     return smapper.sessionState().ownershipImage().ownerAtWorld(karto::Vector2<kt_double>(x, y));

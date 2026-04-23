@@ -89,7 +89,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
   karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
-  session_.buildOwnershipImage(width, height, offset, resolution);
+  session_.buildOwnershipImage(offset, resolution);
 
   // Construct the grid directly with the base-scan bounds, then render ALL
   // scans through the ownership filter.  Do NOT use the static

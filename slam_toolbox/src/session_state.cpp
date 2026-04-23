@@ -93,12 +93,11 @@ bool SessionState::isRemappingNode(int node_id) const
 
 // ---- Ownership image ----
 
-void SessionState::buildOwnershipImage(kt_int32s width, kt_int32s height,
-                                       const karto::Vector2<kt_double>& offset,
+void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                                        kt_double resolution)
 {
   if (!remapping_) return;
-  ownership_image_.build(width, height, offset, resolution,
+  ownership_image_.build(target_offset, resolution,
                          session_polygons_,
                          remapping_->current_session_id,
                          remapping_->current_polygon);

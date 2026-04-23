@@ -2,12 +2,14 @@
  * Copyright (c) 2026, Brightpick
  *
  * Per-cell session ownership grid used by the remapping filter.  Each cell
- * stores the session_id that "owns" it; session 0 is the base map and owns
- * any cell not covered by a polygon.  The image is rebuilt whenever the
- * underlying occupancy grid's dimensions change.
+ * stores the session_id that "owns" it.  The grid sizes itself to the union
+ * bounding box of the input polygons (plus one row/column of margin) so the
+ * memory cost is proportional to the remap area, not to the full map.
  *
- * Lifted out of slam_mapper so it can be unit-tested without a Mapper and
- * so the remapping code sits behind a narrow interface.
+ * Alignment: the grid shares `offset` and `resolution` with the target
+ * occupancy grid so target-grid cell indices can index into the ownership
+ * image directly.  Cells OUTSIDE the ownership image are implicitly owned
+ * by session 0 — that contract lives in karto::IsOwnedBy.
  */
 
 #ifndef SLAM_TOOLBOX_OWNERSHIP_IMAGE_H_
@@ -24,13 +26,13 @@ namespace slam_toolbox
 class OwnershipImage
 {
 public:
-  // Build a fresh image sized to (width x height) with the given world
-  // offset / resolution.  Historical sessions (entries in session_polygons
-  // whose session_id != currentSessionId) are painted first in session-id
-  // order, then currentPolygon paints last so it wins every overlap.
-  // Cells outside all polygons remain session 0.
-  void build(kt_int32s width, kt_int32s height,
-             const karto::Vector2<kt_double>& offset,
+  // Build a fresh image sized to the union bbox of all polygons
+  // (historical + current), aligned to `target_offset` at `resolution`.
+  // Historical sessions (entries in session_polygons whose session_id !=
+  // currentSessionId) are painted first in session-id order, then
+  // currentPolygon paints last so it wins every overlap.  Cells outside
+  // the resulting image are treated as session 0 by karto::IsOwnedBy.
+  void build(const karto::Vector2<kt_double>& target_offset,
              kt_double resolution,
              const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
              int currentSessionId,

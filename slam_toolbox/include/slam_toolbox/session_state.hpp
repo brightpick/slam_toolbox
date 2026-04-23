@@ -80,10 +80,10 @@ public:
   // ---- Ownership image ----
 
   // Build the ownership image from session_polygons + current remapping
-  // config.  Must be called after labels are loaded (deserialization) and
-  // whenever the grid dimensions change.  No-op when no remapping is active.
-  void buildOwnershipImage(kt_int32s width, kt_int32s height,
-                           const karto::Vector2<kt_double>& offset,
+  // config.  The image sizes itself to the polygon union bbox; `target_offset`
+  // anchors its origin so target-grid cell indices remain valid in it.
+  // No-op when no remapping is active.
+  void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                            kt_double resolution);
 
   // Access the ownership image (read-only).
