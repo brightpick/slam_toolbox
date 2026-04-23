@@ -584,12 +584,11 @@ protected:
   void addScans(double ox, double oy, double range, int session_id,
                 double heading = 0.0)
   {
-    smapper_.sessionState().setCurrentSessionId(session_id);
     for (int i = 0; i < 3; ++i)
     {
       auto* scan = makeScan(/*id=*/0, ox, oy, range, kLaser, heading);
       mgr_->AddScan(scan);
-      smapper_.sessionState().registerNode(scan->GetUniqueId());
+      smapper_.sessionState().tagNode(scan->GetUniqueId(), session_id);
       scans_.push_back(scan);
     }
   }
@@ -739,26 +738,25 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
   // at this point, so setRemapping assigns current_session_id = 1.
   ASSERT_TRUE(smapper.sessionState().setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
 
-  // Inject historical sessions with two overlapping polygons, then ask
-  // SessionState to re-pick current_session_id now that the session history
-  // is visible — should land on max(existing) + 1 = 3.
+  // Inject historical sessions with two overlapping polygons.  setAll
+  // re-picks current_session_id now that the session history is visible —
+  // should land on max(existing) + 1 = 3.
   slam_toolbox::NodeSessionMap node_sessions{
     {101, 1}, {102, 2}};
   slam_toolbox::SessionPolygonMap session_polygons{
     {1, rect(0.0, 0.0, 4.0, 4.0)},
     {2, rect(2.0, 0.0, 6.0, 4.0)}};
   smapper.sessionState().setAll(node_sessions, session_polygons);
-  smapper.sessionState().reconcileRemapping();
   ASSERT_EQ(smapper.sessionState().currentSessionId(), 3);
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to
   // the polygon union bbox.  Queries outside the image fall back to
-  // session 0 via sessionAtWorld's bounds check.
+  // session 0 via ownerAtWorld's bounds check.
   smapper.sessionState().buildOwnershipImage(
     karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0);
 
   auto owner = [&](double x, double y) {
-    return smapper.sessionState().ownershipImage().sessionAtWorld(karto::Vector2<kt_double>(x, y));
+    return smapper.sessionState().ownerAtWorld(karto::Vector2<kt_double>(x, y));
   };
 
   // Query points land on specific grid cells.  Karto's WorldToGrid rounds

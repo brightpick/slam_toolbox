@@ -5,7 +5,20 @@
 #include "slam_toolbox/session_state.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
+using slam_toolbox::NodeSessionMap;
+using slam_toolbox::Polygon;
+using slam_toolbox::SessionPolygonMap;
 using slam_toolbox::SessionState;
+
+namespace
+{
+
+Polygon triangle()
+{
+  return {{0.0, 0.0}, {1.0, 0.0}, {0.5, 1.0}};
+}
+
+}  // namespace
 
 // ---- SessionState directly ----
 
@@ -22,24 +35,25 @@ TEST(SessionStateTest, GetSessionIdUnknownNodeReturnsZero)
   EXPECT_EQ(s.getSessionId(999), 0);
 }
 
-TEST(SessionStateTest, SetCurrentSessionIdTagsSubsequentNodes)
+TEST(SessionStateTest, SetRemappingTagsSubsequentNodes)
 {
   SessionState s;
-  s.setCurrentSessionId(3);
-  s.registerNode(10);
+  ASSERT_TRUE(s.setRemapping(triangle()));
+  ASSERT_EQ(s.currentSessionId(), 1);
 
-  EXPECT_EQ(s.getSessionId(10), 3);
+  s.registerNode(10);
+  EXPECT_EQ(s.getSessionId(10), 1);
 }
 
-TEST(SessionStateTest, SetCurrentSessionIdAcrossMultipleRegistrations)
+TEST(SessionStateTest, SecondSetRemappingAdvancesSessionId)
 {
   SessionState s;
 
-  s.setCurrentSessionId(1);
+  ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(1);
   s.registerNode(2);
 
-  s.setCurrentSessionId(2);
+  ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(3);
 
   EXPECT_EQ(s.getSessionId(1), 1);
@@ -47,12 +61,11 @@ TEST(SessionStateTest, SetCurrentSessionIdAcrossMultipleRegistrations)
   EXPECT_EQ(s.getSessionId(3), 2);
 }
 
-TEST(SessionStateTest, GetAllNodeSessionIdsReturnsAllRegistered)
+TEST(SessionStateTest, TagNodeAssignsExplicitSessionId)
 {
   SessionState s;
-  s.setCurrentSessionId(5);
-  s.registerNode(10);
-  s.registerNode(20);
+  s.tagNode(10, 5);
+  s.tagNode(20, 5);
 
   const auto& all = s.getAllNodeSessionIds();
   EXPECT_EQ(all.size(), 2u);
@@ -63,8 +76,7 @@ TEST(SessionStateTest, GetAllNodeSessionIdsReturnsAllRegistered)
 TEST(SessionStateTest, SetAllReplacesBothMaps)
 {
   SessionState s;
-  s.setCurrentSessionId(1);
-  s.registerNode(1);
+  s.tagNode(1, 3);
 
   NodeSessionMap new_nodes{{100, 7}};
   SessionPolygonMap new_polys;
@@ -79,8 +91,7 @@ TEST(SessionStateTest, SetAllReplacesBothMaps)
 TEST(SMapperSessionStateTest, AccessorReturnsUsableState)
 {
   mapper_utils::SMapper smapper;
-  smapper.sessionState().setCurrentSessionId(4);
-  smapper.sessionState().registerNode(42);
+  smapper.sessionState().tagNode(42, 4);
 
   EXPECT_EQ(smapper.sessionState().getSessionId(42), 4);
   EXPECT_EQ(smapper.sessionState().getSessionId(99), 0);

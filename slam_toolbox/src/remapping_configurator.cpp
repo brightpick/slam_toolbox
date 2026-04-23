@@ -160,7 +160,7 @@ void installLoopClosureFilter(karto::LoopClosureCandidateSelector* selector,
     [&smapper](karto::LocalizedRangeScan* pScan) -> bool
     {
       const int scan_sid = smapper.sessionState().getSessionId(pScan->GetUniqueId());
-      const int owner = smapper.sessionState().ownershipImage().sessionAtWorld(
+      const int owner = smapper.sessionState().ownerAtWorld(
         pScan->GetCorrectedPose().GetPosition());
       return scan_sid != owner;
     });

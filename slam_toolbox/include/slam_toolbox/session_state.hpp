@@ -45,9 +45,15 @@ class SessionState
 public:
   // ---- Session ids ----
 
-  // Session id assigned to new scans registered via registerNode().
-  void setCurrentSessionId(int session_id);
+  // Tag the node with the current session id.  The current session id is
+  // managed exclusively by setRemapping() / reconcileRemapping().
   void registerNode(int node_id);
+
+  // Associate `node_id` with a specific `session_id`, bypassing the current
+  // session id.  Useful when labelling a batch of scans after the fact (e.g.
+  // test setups that need base-session scans alongside remap scans without
+  // toggling the active remapping).
+  void tagNode(int node_id, int session_id);
 
   // Id of the session new scans are currently tagged with — equal to the
   // remapping session id while remapping is active, kBaseSessionId on a
@@ -61,19 +67,13 @@ public:
   const NodeSessionMap& getAllNodeSessionIds() const { return node_session_ids_; }
   const SessionPolygonMap& getAllSessionPolygons() const { return session_polygons_; }
 
-  // Replace both maps in one shot (used after deserialization).  Does NOT
-  // touch the current remapping polygon — if a caller configured remapping
-  // (via setRemapping) before historical sessions were visible, it must
-  // invoke reconcileRemapping() afterwards to pick a non-colliding
-  // session id based on the just-loaded data.
+  // Replace both maps in one shot (used after deserialization).  If a
+  // remapping was configured earlier (via setRemapping) its session id is
+  // re-picked as max(loaded session_id)+1 and its polygon re-registered
+  // under the new id — so the caller never sees a session-id collision
+  // with the just-loaded history.
   void setAll(const NodeSessionMap& node_session_ids,
               const SessionPolygonMap& session_polygons);
-
-  // Reassigns the current remapping's session id to max(loaded session_id)+1
-  // and re-registers its polygon under the new id.  No-op when no remapping
-  // is configured.  Call after setAll() when the pre-setAll session id may
-  // collide with loaded history (world-units path).
-  void reconcileRemapping();
 
   // ---- Remapping config ----
 
@@ -101,8 +101,15 @@ public:
   void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                            kt_double resolution);
 
-  // Access the ownership image (read-only).
-  const OwnershipImage& ownershipImage() const { return ownership_image_; }
+  // Session owning the cell at grid index `cell`.  Returns kBaseSessionId if
+  // no image is built or the cell is out of bounds — unpainted periphery
+  // implicitly belongs to the base session.  `cell` must be in the same
+  // coordinate system used for buildOwnershipImage's target_offset.
+  int ownerAt(const karto::Vector2<kt_int32s>& cell) const;
+
+  // Same as ownerAt() but takes a world-space position and converts to grid
+  // coords using the offset/resolution passed to buildOwnershipImage.
+  int ownerAtWorld(const karto::Vector2<kt_double>& world_pos) const;
 
 private:
   int computeNextSessionId() const;

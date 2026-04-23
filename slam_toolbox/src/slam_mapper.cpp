@@ -101,8 +101,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
     scans,
     [this](karto::LocalizedRangeScan* pScan, const karto::Vector2<kt_int32s>& pt)
     {
-      return session_.ownershipImage().sessionAt(pt)
-          == session_.getSessionId(pScan->GetUniqueId());
+      return session_.ownerAt(pt) == session_.getSessionId(pScan->GetUniqueId());
     });
   return result;
 }

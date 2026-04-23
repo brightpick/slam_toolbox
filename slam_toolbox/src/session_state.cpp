@@ -13,14 +13,14 @@ namespace slam_toolbox
 
 // ---- Session ids ----
 
-void SessionState::setCurrentSessionId(int session_id)
-{
-  current_session_id_ = session_id;
-}
-
 void SessionState::registerNode(int node_id)
 {
   node_session_ids_[node_id] = current_session_id_;
+}
+
+void SessionState::tagNode(int node_id, int session_id)
+{
+  node_session_ids_[node_id] = session_id;
 }
 
 int SessionState::getSessionId(int node_id) const
@@ -34,10 +34,10 @@ void SessionState::setAll(const NodeSessionMap& node_session_ids,
 {
   node_session_ids_ = node_session_ids;
   session_polygons_ = session_polygons;
-}
 
-void SessionState::reconcileRemapping()
-{
+  // If remapping was configured before loading, re-pick its session id to
+  // avoid collision with the just-loaded history and re-register its
+  // polygon under the new id.  No-op when no remapping is active.
   if (!remapping_polygon_) return;
   current_session_id_ = computeNextSessionId();
   session_polygons_[current_session_id_] = *remapping_polygon_;
@@ -93,6 +93,16 @@ void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_o
                          session_polygons_,
                          current_session_id_,
                          *remapping_polygon_);
+}
+
+int SessionState::ownerAt(const karto::Vector2<kt_int32s>& cell) const
+{
+  return ownership_image_.sessionAt(cell);
+}
+
+int SessionState::ownerAtWorld(const karto::Vector2<kt_double>& world_pos) const
+{
+  return ownership_image_.sessionAtWorld(world_pos);
 }
 
 }  // namespace slam_toolbox

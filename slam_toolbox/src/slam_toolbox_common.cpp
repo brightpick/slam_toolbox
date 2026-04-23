@@ -826,14 +826,11 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
+  // setAll absorbs the loaded history AND re-picks the current remapping's
+  // session id if remapping was already configured (world-units path).  The
+  // pixels path calls setRemapping() afterwards via resolvePendingPolygon(),
+  // which is naturally collision-free because the history is already in.
   smapper_->sessionState().setAll(node_session_ids, session_polygons);
-
-  // World-units path: setRemapping() ran during setParams() against an empty
-  // session map, so the chosen session_id may now collide with a just-loaded
-  // id.  reconcileRemapping() picks a fresh max+1 based on the loaded state.
-  // Pixels path (handled by resolvePendingPolygon below) calls setRemapping()
-  // for the first time here, so it is naturally collision-free.
-  smapper_->sessionState().reconcileRemapping();
 
   remapping_configurator_.resolvePendingPolygon(
     *smapper_, resolution_, candidate_selector_.get());
