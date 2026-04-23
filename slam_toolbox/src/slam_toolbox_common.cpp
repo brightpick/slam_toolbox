@@ -664,7 +664,8 @@ bool SlamToolbox::serializePoseGraphCallback(
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
   serialization::write(filename, *smapper_->getMapper(), *dataset_,
-    smapper_->sessionState().getAllLabels());
+    smapper_->sessionState().getAllNodeSessionIds(),
+    smapper_->sessionState().getAllSessionPolygons());
   return true;
 }
 
@@ -812,9 +813,11 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
-  std::unordered_map<int, slam_toolbox::SessionLabel> labels;
+  slam_toolbox::labels_serialization::NodeSessionMap node_session_ids;
+  slam_toolbox::labels_serialization::SessionPolygonMap session_polygons;
 
-  if (!serialization::read(filename, *mapper, *dataset, labels))
+  if (!serialization::read(filename, *mapper, *dataset,
+                           node_session_ids, session_polygons))
   {
     ROS_ERROR("DeserializePoseGraph: Failed to read "
       "file: %s.", filename.c_str());
@@ -823,7 +826,7 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
-  smapper_->sessionState().setAllLabels(labels);
+  smapper_->sessionState().setAll(node_session_ids, session_polygons);
 
   remapping_configurator_.resolvePendingPolygon(
     *smapper_, resolution_, candidate_selector_.get());

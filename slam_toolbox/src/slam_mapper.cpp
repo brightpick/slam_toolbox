@@ -81,9 +81,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
   base_scans.reserve(scans.size());
   for (auto* s : scans)
   {
-    const slam_toolbox::SessionLabel* label = session_.getLabel(s->GetUniqueId());
-    const int sid = label ? label->session_id : 0;
-    if (sid != remapping->current_session_id)
+    if (session_.getSessionId(s->GetUniqueId()) != remapping->current_session_id)
     {
       base_scans.push_back(s);
     }
@@ -104,8 +102,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
     session_.ownershipImage().grid(),
     [this](karto::LocalizedRangeScan* pScan) -> kt_int32s
     {
-      const slam_toolbox::SessionLabel* label = session_.getLabel(pScan->GetUniqueId());
-      return label ? label->session_id : 0;
+      return session_.getSessionId(pScan->GetUniqueId());
     });
   return result;
 }

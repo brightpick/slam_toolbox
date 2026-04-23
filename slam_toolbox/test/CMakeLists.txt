@@ -1,5 +1,5 @@
 catkin_add_gtest(${PROJECT_NAME}_unittest
-    session_label_test.cpp
+    session_state_test.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_unittest

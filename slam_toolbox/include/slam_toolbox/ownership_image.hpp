@@ -18,8 +18,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "slam_toolbox/session_label.hpp"
-
 namespace slam_toolbox
 {
 
@@ -27,14 +25,14 @@ class OwnershipImage
 {
 public:
   // Build a fresh image sized to (width x height) with the given world
-  // offset / resolution.  Historical sessions (labels whose session_id !=
-  // currentSessionId) are painted first in session-id order, then
-  // currentPolygon paints last so it wins every overlap.  Cells outside all
-  // polygons remain session 0.
+  // offset / resolution.  Historical sessions (entries in session_polygons
+  // whose session_id != currentSessionId) are painted first in session-id
+  // order, then currentPolygon paints last so it wins every overlap.
+  // Cells outside all polygons remain session 0.
   void build(kt_int32s width, kt_int32s height,
              const karto::Vector2<kt_double>& offset,
              kt_double resolution,
-             const std::unordered_map<int, SessionLabel>& labels,
+             const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
              int currentSessionId,
              const std::vector<karto::Vector2<kt_double>>& currentPolygon);
 

@@ -20,13 +20,11 @@
 #define SLAM_TOOLBOX_SERIALIZATION_H_
 
 #include <string>
-#include <unordered_map>
 #include <ros/ros.h>
 #include <karto_sdk/Karto.h>
 #include <karto_sdk/Mapper.h>
 #include <sys/stat.h>
 #include "slam_toolbox/labels_serialization.hpp"
-#include "slam_toolbox/session_label.hpp"
 
 namespace serialization
 {
@@ -40,7 +38,8 @@ inline bool fileExists(const std::string& name)
 inline void write(const std::string& filename,
   karto::Mapper& mapper,
   karto::Dataset& dataset,
-  const std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
+  const slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
+  const slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
 {
   try
   {
@@ -52,13 +51,15 @@ inline void write(const std::string& filename,
     ROS_ERROR("Failed to write file: Exception %s", e.what());
   }
 
-  slam_toolbox::labels_serialization::save(filename + std::string(".labels"), labels);
+  slam_toolbox::labels_serialization::save(
+    filename + std::string(".labels"), node_session_ids, session_polygons);
 }
 
 inline bool read(const std::string& filename,
   karto::Mapper& mapper,
   karto::Dataset& dataset,
-  std::unordered_map<int, slam_toolbox::SessionLabel>& labels)
+  slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
+  slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
 {
   if (!fileExists(filename + std::string(".posegraph")))
   {
@@ -79,8 +80,10 @@ inline bool read(const std::string& filename,
     return false;
   }
 
-  labels.clear();
-  slam_toolbox::labels_serialization::load(filename + std::string(".labels"), labels);
+  node_session_ids.clear();
+  session_polygons.clear();
+  slam_toolbox::labels_serialization::load(
+    filename + std::string(".labels"), node_session_ids, session_polygons);
 
   return true;
 }

@@ -11,42 +11,39 @@
 namespace slam_toolbox
 {
 
-// ---- Session labels ----
+// ---- Session ids ----
 
-void SessionState::setSessionLabel(const SessionLabel& label)
+void SessionState::setCurrentSessionId(int session_id)
 {
-  current_session_label_ = label;
+  current_session_id_ = session_id;
 }
 
-void SessionState::registerNode(int unique_id)
+void SessionState::registerNode(int node_id)
 {
-  node_labels_[unique_id] = current_session_label_;
+  node_session_ids_[node_id] = current_session_id_;
 }
 
-const SessionLabel* SessionState::getLabel(int unique_id) const
+int SessionState::getSessionId(int node_id) const
 {
-  auto it = node_labels_.find(unique_id);
-  if (it == node_labels_.end()) return nullptr;
-  return &it->second;
+  auto it = node_session_ids_.find(node_id);
+  return it != node_session_ids_.end() ? it->second : 0;
 }
 
-const std::unordered_map<int, SessionLabel>& SessionState::getAllLabels() const
+void SessionState::setAll(const NodeSessionMap& node_session_ids,
+                          const SessionPolygonMap& session_polygons)
 {
-  return node_labels_;
-}
-
-void SessionState::setAllLabels(const std::unordered_map<int, SessionLabel>& labels)
-{
-  node_labels_ = labels;
+  node_session_ids_ = node_session_ids;
+  session_polygons_ = session_polygons;
 
   // If remapping was configured before labels were loaded (typical startup
   // path: setParams → deserialize), recompute current_session_id now that the
-  // real label history is visible.  Loaded labels may include session_ids
+  // real session history is visible.  Loaded data may include session_ids
   // larger than whatever we computed against an empty map.
   if (remapping_)
   {
     remapping_->current_session_id = computeNextSessionId();
-    current_session_label_.session_id = remapping_->current_session_id;
+    current_session_id_ = remapping_->current_session_id;
+    session_polygons_[remapping_->current_session_id] = remapping_->current_polygon;
   }
 }
 
@@ -55,14 +52,18 @@ void SessionState::setAllLabels(const std::unordered_map<int, SessionLabel>& lab
 int SessionState::computeNextSessionId() const
 {
   int max_sid = 0;
-  for (const auto& [node_id, label] : node_labels_)
+  for (const auto& [node_id, session_id] : node_session_ids_)
   {
-    max_sid = std::max(max_sid, label.session_id);
+    max_sid = std::max(max_sid, session_id);
+  }
+  for (const auto& [session_id, polygon] : session_polygons_)
+  {
+    max_sid = std::max(max_sid, session_id);
   }
   return max_sid + 1;
 }
 
-bool SessionState::setRemapping(std::vector<karto::Vector2<kt_double>> polygon)
+bool SessionState::setRemapping(Polygon polygon)
 {
   if (!polygon_fill::isSimplePolygon(polygon))
   {
@@ -75,26 +76,19 @@ bool SessionState::setRemapping(std::vector<karto::Vector2<kt_double>> polygon)
   RemappingConfig cfg;
   cfg.current_session_id = computeNextSessionId();
   cfg.current_polygon = std::move(polygon);
-  remapping_ = cfg;
 
-  // Tag new scans with the computed session_id and carry the polygon on the
-  // label so it is serialized to .labels on save.
-  current_session_label_.session_id = cfg.current_session_id;
-  current_session_label_.polygon = cfg.current_polygon;
+  // Tag new scans with the computed session_id and record the polygon so
+  // it is serialized to .labels on save.
+  current_session_id_ = cfg.current_session_id;
+  session_polygons_[cfg.current_session_id] = cfg.current_polygon;
+  remapping_ = std::move(cfg);
   return true;
 }
 
-const std::optional<SessionState::RemappingConfig>& SessionState::getRemapping() const
-{
-  return remapping_;
-}
-
-bool SessionState::isRemappingNode(int unique_id) const
+bool SessionState::isRemappingNode(int node_id) const
 {
   if (!remapping_) return false;
-  const SessionLabel* label = getLabel(unique_id);
-  const int session_id = label ? label->session_id : 0;
-  return session_id == remapping_->current_session_id;
+  return getSessionId(node_id) == remapping_->current_session_id;
 }
 
 // ---- Ownership image ----
@@ -105,7 +99,7 @@ void SessionState::buildOwnershipImage(kt_int32s width, kt_int32s height,
 {
   if (!remapping_) return;
   ownership_image_.build(width, height, offset, resolution,
-                         node_labels_,
+                         session_polygons_,
                          remapping_->current_session_id,
                          remapping_->current_polygon);
 }

@@ -17,7 +17,6 @@
 #include <ros/ros.h>
 #include <karto_sdk/Karto.h>
 #include <karto_sdk/Mapper.h>
-#include "slam_toolbox/session_label.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 #include "../solvers/ceres_solver.hpp"
 

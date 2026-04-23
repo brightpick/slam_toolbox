@@ -11,12 +11,13 @@
 namespace slam_toolbox
 {
 
-void OwnershipImage::build(kt_int32s width, kt_int32s height,
-                           const karto::Vector2<kt_double>& offset,
-                           kt_double resolution,
-                           const std::unordered_map<int, SessionLabel>& labels,
-                           int currentSessionId,
-                           const std::vector<karto::Vector2<kt_double>>& currentPolygon)
+void OwnershipImage::build(
+  kt_int32s width, kt_int32s height,
+  const karto::Vector2<kt_double>& offset,
+  kt_double resolution,
+  const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
+  int currentSessionId,
+  const std::vector<karto::Vector2<kt_double>>& currentPolygon)
 {
   image_.reset(karto::Grid<kt_int32s>::CreateGrid(width, height, resolution));
   image_->GetCoordinateConverter()->SetOffset(offset);
@@ -40,15 +41,15 @@ void OwnershipImage::build(kt_int32s width, kt_int32s height,
       data, width, height, widthStep, polyGrid, session_id);
   };
 
-  // Collect distinct (session_id, polygon) pairs from labels, ordered by
-  // session_id.  std::map keeps chronological ordering so later sessions
-  // overwrite earlier ones in overlapping regions.
+  // Paint historical sessions (everything except the current one) ordered
+  // by session_id so later sessions overwrite earlier ones in overlapping
+  // regions.  std::map gives us that ordering from the unordered input.
   std::map<int, const std::vector<karto::Vector2<kt_double>>*> historical;
-  for (const auto& [node_id, label] : labels)
+  for (const auto& [sid, polygon] : session_polygons)
   {
-    if (label.polygon.has_value() && label.session_id != currentSessionId)
+    if (sid != currentSessionId)
     {
-      historical[label.session_id] = &(*label.polygon);
+      historical[sid] = &polygon;
     }
   }
 

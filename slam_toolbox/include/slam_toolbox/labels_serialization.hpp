@@ -13,11 +13,12 @@
  *       session_id: <int>
  *     ...
  *
- * Polygons are emitted once per session and joined onto each label on load.
- * Session 0 (base) is the implicit default — it never appears in `sessions`,
- * and its labels are omitted from `labels`.  Any pose id absent from the
- * file is treated as session 0 with no polygon; SMapper callers already
- * handle that case by defaulting to session_id = 0.
+ * Sessions and labels are stored separately: polygons are emitted once per
+ * session, and labels just record which session each pose belongs to.
+ * Session 0 (base) is the implicit default — it never appears in
+ * `sessions`, and its labels are omitted from `labels`.  Any pose id absent
+ * from the file is treated as session 0; SessionState::getSessionId()
+ * already returns 0 for unknown nodes.
  */
 
 #ifndef SLAM_TOOLBOX_LABELS_SERIALIZATION_H_
@@ -26,21 +27,24 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <sys/stat.h>
 #include <unordered_map>
 #include <vector>
 
 #include <ros/ros.h>
 #include <yaml-cpp/yaml.h>
 #include <karto_sdk/Karto.h>
-#include <sys/stat.h>
 
 #include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/session_label.hpp"
 
 namespace slam_toolbox
 {
 namespace labels_serialization
 {
+
+using Polygon = std::vector<karto::Vector2<kt_double>>;
+using NodeSessionMap = std::unordered_map<int, int>;
+using SessionPolygonMap = std::unordered_map<int, Polygon>;
 
 inline bool fileExists(const std::string& name)
 {
@@ -49,26 +53,23 @@ inline bool fileExists(const std::string& name)
 }
 
 inline void save(const std::string& filename,
-  const std::unordered_map<int, SessionLabel>& labels)
+  const NodeSessionMap& node_session_ids,
+  const SessionPolygonMap& session_polygons)
 {
-  // Collect distinct (session_id, polygon) pairs.  std::map keeps the
-  // output deterministically ordered by session_id.
-  std::map<int, std::vector<karto::Vector2<kt_double>>> sessions;
-  for (const auto& [pose_id, label] : labels)
-  {
-    if (label.polygon.has_value())
-    {
-      sessions[label.session_id] = *label.polygon;
-    }
-  }
-
   YAML::Node root;
-  for (const auto& [sid, polygon] : sessions)
+
+  // Emit sessions in session_id order (std::map) for determinism.
+  std::map<int, const Polygon*> ordered;
+  for (const auto& [sid, polygon] : session_polygons)
+  {
+    ordered[sid] = &polygon;
+  }
+  for (const auto& [sid, polyPtr] : ordered)
   {
     YAML::Node session;
     session["id"] = sid;
     YAML::Node poly;
-    for (const auto& v : polygon)
+    for (const auto& v : *polyPtr)
     {
       YAML::Node vertex;
       vertex.push_back(v.GetX());
@@ -80,12 +81,12 @@ inline void save(const std::string& filename,
     root["sessions"].push_back(session);
   }
 
-  for (const auto& [pose_id, label] : labels)
+  for (const auto& [pose_id, session_id] : node_session_ids)
   {
-    if (label.session_id == 0) continue;  // base session is implicit
+    if (session_id == 0) continue;  // base session is implicit
     YAML::Node entry;
     entry["id"] = pose_id;
-    entry["session_id"] = label.session_id;
+    entry["session_id"] = session_id;
     root["labels"].push_back(entry);
   }
 
@@ -94,7 +95,8 @@ inline void save(const std::string& filename,
 }
 
 inline bool load(const std::string& filename,
-  std::unordered_map<int, SessionLabel>& labels)
+  NodeSessionMap& node_session_ids,
+  SessionPolygonMap& session_polygons)
 {
   if (!fileExists(filename))
   {
@@ -104,7 +106,6 @@ inline bool load(const std::string& filename,
   {
     YAML::Node root = YAML::LoadFile(filename);
 
-    std::unordered_map<int, std::vector<karto::Vector2<kt_double>>> session_polygons;
     for (const auto& session : root["sessions"])
     {
       const int sid = session["id"].as<int>();
@@ -116,7 +117,7 @@ inline bool load(const std::string& filename,
         continue;
       }
 
-      std::vector<karto::Vector2<kt_double>> polygon;
+      Polygon polygon;
       bool malformed = false;
       for (const auto& vertex : poly)
       {
@@ -152,13 +153,8 @@ inline bool load(const std::string& filename,
     for (const auto& entry : root["labels"])
     {
       const int pose_id = entry["id"].as<int>();
-      SessionLabel label = SessionLabel::deserialize(entry);
-      auto it = session_polygons.find(label.session_id);
-      if (it != session_polygons.end())
-      {
-        label.polygon = it->second;
-      }
-      labels[pose_id] = label;
+      const int session_id = entry["session_id"].as<int>();
+      node_session_ids[pose_id] = session_id;
     }
   }
   catch (const YAML::Exception& e)

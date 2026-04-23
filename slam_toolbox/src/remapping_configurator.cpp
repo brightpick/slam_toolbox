@@ -3,7 +3,6 @@
  */
 
 #include "slam_toolbox/remapping_configurator.hpp"
-#include "slam_toolbox/session_label.hpp"
 
 #include <XmlRpcValue.h>
 
@@ -163,8 +162,7 @@ void RemappingConfigurator::installLoopClosureFilter(
   selector->setCandidateFilter(
     [&smapper](karto::LocalizedRangeScan* pScan) -> bool
     {
-      const SessionLabel* label = smapper.sessionState().getLabel(pScan->GetUniqueId());
-      const int scan_sid = label ? label->session_id : 0;
+      const int scan_sid = smapper.sessionState().getSessionId(pScan->GetUniqueId());
       const int owner = smapper.sessionState().ownershipImage().ownerAtWorld(
         pScan->GetCorrectedPose().GetPosition());
       return scan_sid != owner;

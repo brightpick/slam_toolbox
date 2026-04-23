@@ -33,7 +33,6 @@
 #include "karto_sdk/Karto.h"
 #include "karto_sdk/Mapper.h"
 #include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/session_label.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
 namespace
@@ -570,9 +569,7 @@ protected:
   void addScans(double ox, double oy, double range, int session_id,
                 double heading = 0.0)
   {
-    slam_toolbox::SessionLabel label;
-    label.session_id = session_id;
-    smapper_.sessionState().setSessionLabel(label);
+    smapper_.sessionState().setCurrentSessionId(session_id);
     for (int i = 0; i < 3; ++i)
     {
       auto* scan = makeScan(/*id=*/0, ox, oy, range, kLaser, heading);
@@ -727,22 +724,14 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
   // at this point, so setRemapping assigns current_session_id = 1.
   ASSERT_TRUE(smapper.sessionState().setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
 
-  // Inject historical labels with two overlapping session polygons.
-  // setAllLabels recomputes current_session_id to max(existing) + 1 = 3.
-  std::unordered_map<int, slam_toolbox::SessionLabel> labels;
-  {
-    slam_toolbox::SessionLabel s1;
-    s1.session_id = 1;
-    s1.polygon = rect(0.0, 0.0, 4.0, 4.0);
-    labels[101] = s1;
-  }
-  {
-    slam_toolbox::SessionLabel s2;
-    s2.session_id = 2;
-    s2.polygon = rect(2.0, 0.0, 6.0, 4.0);
-    labels[102] = s2;
-  }
-  smapper.sessionState().setAllLabels(labels);
+  // Inject historical sessions with two overlapping polygons.  setAll
+  // recomputes current_session_id to max(existing) + 1 = 3.
+  slam_toolbox::SessionState::NodeSessionMap node_sessions{
+    {101, 1}, {102, 2}};
+  slam_toolbox::SessionState::SessionPolygonMap session_polygons{
+    {1, rect(0.0, 0.0, 4.0, 4.0)},
+    {2, rect(2.0, 0.0, 6.0, 4.0)}};
+  smapper.sessionState().setAll(node_sessions, session_polygons);
   ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 3);
 
   // World bounds [-2, 10] × [-2, 6] at 1m resolution.  Covers every test
