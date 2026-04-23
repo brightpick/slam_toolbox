@@ -26,7 +26,7 @@ void SessionState::registerNode(int node_id)
 int SessionState::getSessionId(int node_id) const
 {
   auto it = node_session_ids_.find(node_id);
-  return it != node_session_ids_.end() ? it->second : 0;
+  return it != node_session_ids_.end() ? it->second : kBaseSessionId;
 }
 
 void SessionState::setAll(const NodeSessionMap& node_session_ids,
@@ -34,17 +34,14 @@ void SessionState::setAll(const NodeSessionMap& node_session_ids,
 {
   node_session_ids_ = node_session_ids;
   session_polygons_ = session_polygons;
+}
 
-  // If remapping was configured before labels were loaded (typical startup
-  // path: setParams → deserialize), recompute current_session_id now that the
-  // real session history is visible.  Loaded data may include session_ids
-  // larger than whatever we computed against an empty map.
-  if (remapping_)
-  {
-    remapping_->current_session_id = computeNextSessionId();
-    current_session_id_ = remapping_->current_session_id;
-    session_polygons_[remapping_->current_session_id] = remapping_->current_polygon;
-  }
+void SessionState::reconcileRemapping()
+{
+  if (!remapping_) return;
+  remapping_->current_session_id = computeNextSessionId();
+  current_session_id_ = remapping_->current_session_id;
+  session_polygons_[remapping_->current_session_id] = remapping_->current_polygon;
 }
 
 // ---- Remapping config ----

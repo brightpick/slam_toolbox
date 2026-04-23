@@ -739,14 +739,16 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
   // at this point, so setRemapping assigns current_session_id = 1.
   ASSERT_TRUE(smapper.sessionState().setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
 
-  // Inject historical sessions with two overlapping polygons.  setAll
-  // recomputes current_session_id to max(existing) + 1 = 3.
-  slam_toolbox::SessionState::NodeSessionMap node_sessions{
+  // Inject historical sessions with two overlapping polygons, then ask
+  // SessionState to re-pick current_session_id now that the session history
+  // is visible — should land on max(existing) + 1 = 3.
+  slam_toolbox::NodeSessionMap node_sessions{
     {101, 1}, {102, 2}};
-  slam_toolbox::SessionState::SessionPolygonMap session_polygons{
+  slam_toolbox::SessionPolygonMap session_polygons{
     {1, rect(0.0, 0.0, 4.0, 4.0)},
     {2, rect(2.0, 0.0, 6.0, 4.0)}};
   smapper.sessionState().setAll(node_sessions, session_polygons);
+  smapper.sessionState().reconcileRemapping();
   ASSERT_EQ(smapper.sessionState().getRemapping()->current_session_id, 3);
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to

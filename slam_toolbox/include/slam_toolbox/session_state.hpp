@@ -26,13 +26,23 @@
 namespace slam_toolbox
 {
 
+// Canonical shared types for session bookkeeping.  Defined here (the domain
+// owner) and re-used by labels_serialization so there's a single source of
+// truth for the map shapes that flow between save/load and SessionState.
+using Polygon = std::vector<karto::Vector2<kt_double>>;
+using NodeSessionMap = std::unordered_map<int, int>;
+using SessionPolygonMap = std::unordered_map<int, Polygon>;
+
+// Session id for the base map loaded from a .posegraph file.  Backwards
+// compatibility: pre-remapping .posegraph files have no .labels sidecar, so
+// every node implicitly belongs to session 0.  New remapping sessions are
+// numbered starting at 1 and carry their own polygon.  Nodes missing from
+// node_session_ids are treated as session 0 by getSessionId().
+constexpr int kBaseSessionId = 0;
+
 class SessionState
 {
 public:
-  using Polygon = std::vector<karto::Vector2<kt_double>>;
-  using NodeSessionMap = std::unordered_map<int, int>;
-  using SessionPolygonMap = std::unordered_map<int, Polygon>;
-
   // Configuration for the active remapping session.
   // current_session_id is computed automatically by setRemapping() as
   // max(existing session_id) + 1 — it is never set by callers.
@@ -51,15 +61,26 @@ public:
   void setCurrentSessionId(int session_id);
   void registerNode(int node_id);
 
-  // Session id for `node_id`, or 0 (base session) if unknown.
+  // Session id for `node_id`, or kBaseSessionId if unknown — new scans on a
+  // fresh map and nodes from no-labels .posegraph files both land here.
   int getSessionId(int node_id) const;
 
   const NodeSessionMap& getAllNodeSessionIds() const { return node_session_ids_; }
   const SessionPolygonMap& getAllSessionPolygons() const { return session_polygons_; }
 
-  // Replace both maps in one shot (used after deserialization).
+  // Replace both maps in one shot (used after deserialization).  Does NOT
+  // touch the current remapping config — if a caller configured remapping
+  // (via setRemapping) before historical sessions were visible, it must
+  // invoke reconcileRemapping() afterwards to pick a non-colliding
+  // session id based on the just-loaded data.
   void setAll(const NodeSessionMap& node_session_ids,
               const SessionPolygonMap& session_polygons);
+
+  // Reassigns the current remapping's session id to max(loaded session_id)+1
+  // and re-registers its polygon under the new id.  No-op when no remapping
+  // is configured.  Call after setAll() when the pre-setAll session id may
+  // collide with loaded history (world-units path).
+  void reconcileRemapping();
 
   // ---- Remapping config ----
 

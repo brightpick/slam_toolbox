@@ -10,10 +10,9 @@
 namespace
 {
 
-namespace LS = slam_toolbox::labels_serialization;
-using NodeMap = LS::NodeSessionMap;
-using PolyMap = LS::SessionPolygonMap;
-using Polygon = LS::Polygon;
+using NodeMap = slam_toolbox::NodeSessionMap;
+using PolyMap = slam_toolbox::SessionPolygonMap;
+using Polygon = slam_toolbox::Polygon;
 
 class LabelsSerializationTest : public ::testing::Test
 {
@@ -54,7 +53,7 @@ TEST_F(LabelsSerializationTest, LoadReturnsFalseWhenFileMissing)
 {
   NodeMap nodes;
   PolyMap polygons;
-  EXPECT_FALSE(LS::load(path_.string(), nodes, polygons));
+  EXPECT_FALSE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   EXPECT_TRUE(nodes.empty());
   EXPECT_TRUE(polygons.empty());
 }
@@ -63,11 +62,11 @@ TEST_F(LabelsSerializationTest, LoadReturnsFalseWhenFileMissing)
 
 TEST_F(LabelsSerializationTest, EmptyMapsRoundTripAsEmpty)
 {
-  LS::save(path_.string(), NodeMap{}, PolyMap{});
+  slam_toolbox::saveLabels(path_.string(), NodeMap{}, PolyMap{});
 
   NodeMap nodes;
   PolyMap polygons;
-  EXPECT_TRUE(LS::load(path_.string(), nodes, polygons));
+  EXPECT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   EXPECT_TRUE(nodes.empty());
   EXPECT_TRUE(polygons.empty());
 }
@@ -77,11 +76,11 @@ TEST_F(LabelsSerializationTest, BaseSessionNodesAreNotEmitted)
   // Nodes in session 0 should round-trip as if they were never there —
   // callers treat missing as session 0.
   NodeMap src_nodes{{1, 0}, {2, 0}};
-  LS::save(path_.string(), src_nodes, PolyMap{});
+  slam_toolbox::saveLabels(path_.string(), src_nodes, PolyMap{});
 
   NodeMap nodes;
   PolyMap polygons;
-  ASSERT_TRUE(LS::load(path_.string(), nodes, polygons));
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   EXPECT_TRUE(nodes.empty());
   EXPECT_TRUE(polygons.empty());
 }
@@ -90,11 +89,11 @@ TEST_F(LabelsSerializationTest, RoundTripSingleSessionWithPolygon)
 {
   NodeMap src_nodes{{10, 1}, {11, 1}};
   PolyMap src_polys{{1, triangle()}};
-  LS::save(path_.string(), src_nodes, src_polys);
+  slam_toolbox::saveLabels(path_.string(), src_nodes, src_polys);
 
   NodeMap nodes;
   PolyMap polygons;
-  ASSERT_TRUE(LS::load(path_.string(), nodes, polygons));
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
 
   ASSERT_EQ(nodes.size(), 2u);
   EXPECT_EQ(nodes[10], 1);
@@ -111,11 +110,11 @@ TEST_F(LabelsSerializationTest, RoundTripMultipleSessionsWithDistinctPolygons)
 {
   NodeMap src_nodes{{1, 1}, {2, 2}, {3, 0}};  // pose 3 is base — not emitted
   PolyMap src_polys{{1, triangle(0.0)}, {2, triangle(10.0)}};
-  LS::save(path_.string(), src_nodes, src_polys);
+  slam_toolbox::saveLabels(path_.string(), src_nodes, src_polys);
 
   NodeMap nodes;
   PolyMap polygons;
-  ASSERT_TRUE(LS::load(path_.string(), nodes, polygons));
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
 
   EXPECT_EQ(nodes.count(3), 0u);  // base-session label dropped
   ASSERT_EQ(nodes.size(), 2u);
@@ -141,7 +140,7 @@ TEST_F(LabelsSerializationTest, LoadSkipsSessionWithTooFewVertices)
 
   NodeMap nodes;
   PolyMap polygons;
-  ASSERT_TRUE(LS::load(path_.string(), nodes, polygons));
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   // The label still loads, but the malformed session's polygon is dropped.
   ASSERT_EQ(nodes.size(), 1u);
   EXPECT_EQ(nodes[42], 1);
@@ -176,7 +175,7 @@ TEST_F(LabelsSerializationTest, LoadSkipsSessionWithSelfIntersectingPolygon)
 
   NodeMap nodes;
   PolyMap polygons;
-  ASSERT_TRUE(LS::load(path_.string(), nodes, polygons));
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   ASSERT_EQ(nodes.size(), 1u);
   EXPECT_EQ(polygons.count(7), 0u);
 }
@@ -189,7 +188,7 @@ TEST_F(LabelsSerializationTest, LoadReturnsFalseOnCorruptYaml)
 
   NodeMap nodes;
   PolyMap polygons;
-  EXPECT_FALSE(LS::load(path_.string(), nodes, polygons));
+  EXPECT_FALSE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
 }
 
 int main(int argc, char** argv)

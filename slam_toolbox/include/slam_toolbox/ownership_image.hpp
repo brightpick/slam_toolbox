@@ -9,7 +9,8 @@
  * Alignment: the grid shares `offset` and `resolution` with the target
  * occupancy grid so target-grid cell indices can index into the ownership
  * image directly.  Cells OUTSIDE the ownership image are implicitly owned
- * by session 0 — `sessionAt()` encodes that contract.
+ * by the base session (kBaseSessionId) — `sessionAt()` encodes that
+ * contract.
  */
 
 #ifndef SLAM_TOOLBOX_OWNERSHIP_IMAGE_H_
@@ -40,8 +41,8 @@ public:
 
   // Session owning the cell at grid index `pt` (indices are in target-grid
   // coords, which this image shares by virtue of using target_offset).
-  // Returns 0 when no image is built or the cell is out of bounds —
-  // unpainted periphery is implicitly session 0.
+  // Returns kBaseSessionId when no image is built or the cell is out of
+  // bounds — unpainted periphery implicitly belongs to the base session.
   int sessionAt(const karto::Vector2<kt_int32s>& pt) const;
 
   // Session owning the cell at world position `worldPos`.  Converts to

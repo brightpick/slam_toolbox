@@ -15,10 +15,10 @@
  *
  * Sessions and labels are stored separately: polygons are emitted once per
  * session, and labels just record which session each pose belongs to.
- * Session 0 (base) is the implicit default — it never appears in
- * `sessions`, and its labels are omitted from `labels`.  Any pose id absent
- * from the file is treated as session 0; SessionState::getSessionId()
- * already returns 0 for unknown nodes.
+ * kBaseSessionId is the implicit default — it never appears in `sessions`,
+ * and its labels are omitted from `labels`.  Any pose id absent from the
+ * file is treated as kBaseSessionId; SessionState::getSessionId() already
+ * returns kBaseSessionId for unknown nodes.
  */
 
 #ifndef SLAM_TOOLBOX_LABELS_SERIALIZATION_H_
@@ -28,31 +28,17 @@
 #include <map>
 #include <string>
 #include <sys/stat.h>
-#include <unordered_map>
-#include <vector>
 
 #include <ros/ros.h>
 #include <yaml-cpp/yaml.h>
-#include <karto_sdk/Karto.h>
 
 #include "slam_toolbox/polygon_fill.hpp"
+#include "slam_toolbox/session_state.hpp"
 
 namespace slam_toolbox
 {
-namespace labels_serialization
-{
 
-using Polygon = std::vector<karto::Vector2<kt_double>>;
-using NodeSessionMap = std::unordered_map<int, int>;
-using SessionPolygonMap = std::unordered_map<int, Polygon>;
-
-inline bool fileExists(const std::string& name)
-{
-  struct stat buffer;
-  return (stat(name.c_str(), &buffer) == 0);
-}
-
-inline void save(const std::string& filename,
+inline void saveLabels(const std::string& filename,
   const NodeSessionMap& node_session_ids,
   const SessionPolygonMap& session_polygons)
 {
@@ -83,7 +69,7 @@ inline void save(const std::string& filename,
 
   for (const auto& [pose_id, session_id] : node_session_ids)
   {
-    if (session_id == 0) continue;  // base session is implicit
+    if (session_id == kBaseSessionId) continue;  // base session is implicit
     YAML::Node entry;
     entry["id"] = pose_id;
     entry["session_id"] = session_id;
@@ -94,11 +80,12 @@ inline void save(const std::string& filename,
   fout << root;
 }
 
-inline bool load(const std::string& filename,
+inline bool loadLabels(const std::string& filename,
   NodeSessionMap& node_session_ids,
   SessionPolygonMap& session_polygons)
 {
-  if (!fileExists(filename))
+  struct stat buffer;
+  if (stat(filename.c_str(), &buffer) != 0)
   {
     return false;
   }
@@ -113,7 +100,7 @@ inline bool load(const std::string& filename,
       const auto& poly = session["polygon"];
       if (!poly || !poly.IsSequence())
       {
-        ROS_ERROR("labels_serialization: session %d has no polygon — skipped.", sid);
+        ROS_ERROR("loadLabels: session %d has no polygon — skipped.", sid);
         continue;
       }
 
@@ -123,7 +110,7 @@ inline bool load(const std::string& filename,
       {
         if (!vertex.IsSequence() || vertex.size() != 2)
         {
-          ROS_ERROR("labels_serialization: session %d has a malformed vertex "
+          ROS_ERROR("loadLabels: session %d has a malformed vertex "
                     "— session skipped.", sid);
           malformed = true;
           break;
@@ -134,7 +121,7 @@ inline bool load(const std::string& filename,
 
       if (polygon.size() < 3)
       {
-        ROS_ERROR("labels_serialization: session %d polygon has %zu "
+        ROS_ERROR("loadLabels: session %d polygon has %zu "
                   "vertex(es) — at least 3 required, session skipped.",
                   sid, polygon.size());
         continue;
@@ -142,7 +129,7 @@ inline bool load(const std::string& filename,
 
       if (!polygon_fill::isSimplePolygon(polygon))
       {
-        ROS_ERROR("labels_serialization: session %d polygon is "
+        ROS_ERROR("loadLabels: session %d polygon is "
                   "self-intersecting — session skipped.", sid);
         continue;
       }
@@ -159,14 +146,13 @@ inline bool load(const std::string& filename,
   }
   catch (const YAML::Exception& e)
   {
-    ROS_WARN("labels_serialization: failed to read labels file: %s. "
+    ROS_WARN("loadLabels: failed to read labels file: %s. "
              "Continuing without labels.", e.what());
     return false;
   }
   return true;
 }
 
-}  // namespace labels_serialization
 }  // namespace slam_toolbox
 
 #endif  // SLAM_TOOLBOX_LABELS_SERIALIZATION_H_

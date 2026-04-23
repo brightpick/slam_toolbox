@@ -66,8 +66,8 @@ TEST(SessionStateTest, SetAllReplacesBothMaps)
   s.setCurrentSessionId(1);
   s.registerNode(1);
 
-  SessionState::NodeSessionMap new_nodes{{100, 7}};
-  SessionState::SessionPolygonMap new_polys;
+  NodeSessionMap new_nodes{{100, 7}};
+  SessionPolygonMap new_polys;
   s.setAll(new_nodes, new_polys);
 
   EXPECT_EQ(s.getSessionId(1), 0);   // dropped

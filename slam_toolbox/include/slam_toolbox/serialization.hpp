@@ -38,8 +38,8 @@ inline bool fileExists(const std::string& name)
 inline void write(const std::string& filename,
   karto::Mapper& mapper,
   karto::Dataset& dataset,
-  const slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
-  const slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
+  const slam_toolbox::NodeSessionMap& node_session_ids,
+  const slam_toolbox::SessionPolygonMap& session_polygons)
 {
   try
   {
@@ -51,7 +51,7 @@ inline void write(const std::string& filename,
     ROS_ERROR("Failed to write file: Exception %s", e.what());
   }
 
-  slam_toolbox::labels_serialization::save(
+  slam_toolbox::saveLabels(
     filename + std::string(".labels"), node_session_ids, session_polygons);
 }
 
@@ -86,14 +86,14 @@ inline bool read(const std::string& filename,
 inline bool read(const std::string& filename,
   karto::Mapper& mapper,
   karto::Dataset& dataset,
-  slam_toolbox::labels_serialization::NodeSessionMap& node_session_ids,
-  slam_toolbox::labels_serialization::SessionPolygonMap& session_polygons)
+  slam_toolbox::NodeSessionMap& node_session_ids,
+  slam_toolbox::SessionPolygonMap& session_polygons)
 {
   if (!read(filename, mapper, dataset)) return false;
 
   node_session_ids.clear();
   session_polygons.clear();
-  slam_toolbox::labels_serialization::load(
+  slam_toolbox::loadLabels(
     filename + std::string(".labels"), node_session_ids, session_polygons);
   return true;
 }

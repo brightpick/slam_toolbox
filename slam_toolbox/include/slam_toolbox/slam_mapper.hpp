@@ -24,7 +24,6 @@
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
 #include "slam_toolbox/session_state.hpp"
-#include <memory>
 
 namespace mapper_utils
 {

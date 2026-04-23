@@ -24,8 +24,7 @@ std::optional<double> toDouble(XmlRpc::XmlRpcValue& v)
   }
 }
 
-bool readPolygonParam(XmlRpc::XmlRpcValue& xml,
-                      std::vector<karto::Vector2<kt_double>>& out)
+bool readPolygonParam(XmlRpc::XmlRpcValue& xml, Polygon& out)
 {
   if (xml.getType() != XmlRpc::XmlRpcValue::TypeArray || xml.size() < 3)
   {
@@ -65,7 +64,7 @@ void RemappingConfigurator::loadFromRosParams(
   XmlRpc::XmlRpcValue xml_poly;
   if (!nh.getParam("remapping_polygon", xml_poly)) return;
 
-  std::vector<karto::Vector2<kt_double>> polygon;
+  Polygon polygon;
   if (!readPolygonParam(xml_poly, polygon)) return;
 
   std::string units;
@@ -121,7 +120,7 @@ void RemappingConfigurator::resolvePendingPolygon(
   }
   else
   {
-    std::vector<karto::Vector2<kt_double>> world_poly;
+    Polygon world_poly;
     world_poly.reserve(pending_pixel_polygon_->size());
     for (const auto& v : *pending_pixel_polygon_)
     {
@@ -143,9 +142,8 @@ void RemappingConfigurator::resolvePendingPolygon(
   pending_pixel_polygon_.reset();
 }
 
-void RemappingConfigurator::installFixedPosePredicate(
-  karto::ScanSolver& solver,
-  mapper_utils::SMapper& smapper)
+void installFixedPosePredicate(karto::ScanSolver& solver,
+                               mapper_utils::SMapper& smapper)
 {
   solver.setNodeFixedPredicate(
     [&smapper](int id) {
@@ -153,9 +151,8 @@ void RemappingConfigurator::installFixedPosePredicate(
     });
 }
 
-void RemappingConfigurator::installLoopClosureFilter(
-  karto::LoopClosureCandidateSelector* selector,
-  mapper_utils::SMapper& smapper)
+void installLoopClosureFilter(karto::LoopClosureCandidateSelector* selector,
+                              mapper_utils::SMapper& smapper)
 {
   if (!selector) return;
 

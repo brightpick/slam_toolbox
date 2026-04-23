@@ -4,6 +4,7 @@
 
 #include "slam_toolbox/ownership_image.hpp"
 #include "slam_toolbox/polygon_fill.hpp"
+#include "slam_toolbox/session_state.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -83,13 +84,13 @@ void OwnershipImage::build(
   image_.reset(karto::Grid<kt_int32s>::CreateGrid(width, height, resolution));
   image_->GetCoordinateConverter()->SetOffset(target_offset);
 
-  // Fill with session 0 (base session owns everything initially).
-  // Rows are strided by WidthStep (width aligned up to 8), not width — see
+  // Fill with the base session (owns everything initially).  Rows are
+  // strided by WidthStep (width aligned up to 8), not width — see
   // Grid::GridIndex.  Using width here would leave the padding bytes at the
   // end of each row uninitialised and the filter would read garbage.
   kt_int32s* data = image_->GetDataPointer();
   const kt_int32s widthStep = image_->GetWidthStep();
-  std::fill(data, data + (widthStep * height), 0);
+  std::fill(data, data + (widthStep * height), kBaseSessionId);
 
   // Paint a world-space polygon by transforming its vertices into grid
   // coords and delegating to the standalone scanline fill.
@@ -122,14 +123,14 @@ void OwnershipImage::build(
 
 int OwnershipImage::sessionAt(const karto::Vector2<kt_int32s>& pt) const
 {
-  if (!image_) return 0;
-  if (!image_->IsValidGridIndex(pt)) return 0;
+  if (!image_) return kBaseSessionId;
+  if (!image_->IsValidGridIndex(pt)) return kBaseSessionId;
   return image_->GetDataPointer()[image_->GridIndex(pt, false)];
 }
 
 int OwnershipImage::sessionAtWorld(const karto::Vector2<kt_double>& worldPos) const
 {
-  if (!image_) return 0;
+  if (!image_) return kBaseSessionId;
   return sessionAt(image_->GetCoordinateConverter()->WorldToGrid(worldPos));
 }
 

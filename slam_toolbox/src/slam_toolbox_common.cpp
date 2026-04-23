@@ -132,7 +132,7 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
 
-  RemappingConfigurator::installFixedPosePredicate(*solver_, *smapper_);
+  installFixedPosePredicate(*solver_, *smapper_);
 }
 
 /*****************************************************************************/
@@ -813,8 +813,8 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
-  slam_toolbox::labels_serialization::NodeSessionMap node_session_ids;
-  slam_toolbox::labels_serialization::SessionPolygonMap session_polygons;
+  slam_toolbox::NodeSessionMap node_session_ids;
+  slam_toolbox::SessionPolygonMap session_polygons;
 
   if (!serialization::read(filename, *mapper, *dataset,
                            node_session_ids, session_polygons))
@@ -828,6 +828,13 @@ bool SlamToolbox::deserializePoseGraphCallback(
   loadSerializedPoseGraph(mapper, dataset);
   smapper_->sessionState().setAll(node_session_ids, session_polygons);
 
+  // World-units path: setRemapping() ran during setParams() against an empty
+  // session map, so the chosen session_id may now collide with a just-loaded
+  // id.  reconcileRemapping() picks a fresh max+1 based on the loaded state.
+  // Pixels path (handled by resolvePendingPolygon below) calls setRemapping()
+  // for the first time here, so it is naturally collision-free.
+  smapper_->sessionState().reconcileRemapping();
+
   remapping_configurator_.resolvePendingPolygon(
     *smapper_, resolution_, candidate_selector_.get());
 
@@ -837,8 +844,7 @@ bool SlamToolbox::deserializePoseGraphCallback(
   solver_->Compute();
 
   // Labels are now loaded, so the filter has enough context to run.
-  RemappingConfigurator::installLoopClosureFilter(
-    candidate_selector_.get(), *smapper_);
+  installLoopClosureFilter(candidate_selector_.get(), *smapper_);
 
   updateMap();
 

@@ -50,22 +50,21 @@ public:
                              double resolution,
                              karto::LoopClosureCandidateSelector* selector);
 
-  // Pin all nodes not belonging to the current remapping session during
-  // CERES optimisation.  The predicate reads through `smapper`; caller
-  // must keep smapper alive at least as long as `solver`.
-  static void installFixedPosePredicate(karto::ScanSolver& solver,
-                                        mapper_utils::SMapper& smapper);
-
-  // Drop candidate scans whose recorded session no longer owns the cell
-  // at their position.  No-op when `selector` is null.  Safe to call
-  // repeatedly — replaces any previously-installed filter.
-  static void installLoopClosureFilter(
-    karto::LoopClosureCandidateSelector* selector,
-    mapper_utils::SMapper& smapper);
-
 private:
-  std::optional<std::vector<karto::Vector2<kt_double>>> pending_pixel_polygon_;
+  std::optional<Polygon> pending_pixel_polygon_;
 };
+
+// Pin all nodes not belonging to the current remapping session during
+// CERES optimisation.  The predicate reads through `smapper`; caller
+// must keep smapper alive at least as long as `solver`.
+void installFixedPosePredicate(karto::ScanSolver& solver,
+                               mapper_utils::SMapper& smapper);
+
+// Drop candidate scans whose recorded session no longer owns the cell
+// at their position.  No-op when `selector` is null.  Safe to call
+// repeatedly — replaces any previously-installed filter.
+void installLoopClosureFilter(karto::LoopClosureCandidateSelector* selector,
+                              mapper_utils::SMapper& smapper);
 
 }  // namespace slam_toolbox
 
