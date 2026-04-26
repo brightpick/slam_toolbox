@@ -3298,6 +3298,10 @@ namespace karto
   void Mapper::SetScanSolver(ScanSolver* pScanOptimizer)
   {
 	  m_pScanOptimizer = pScanOptimizer;
+	  if (m_pScanOptimizer && m_PoseFixedPredicate)
+	  {
+	    m_pScanOptimizer->setNodeFixedPredicate(m_PoseFixedPredicate);
+	  }
   }
 
   void Mapper::SetCandidateSelector(LoopClosureCandidateSelector* pSelector)
@@ -3308,6 +3312,15 @@ namespace karto
       m_pGraph->SetCandidateSelector(pSelector);
     }
     // If graph doesn't exist yet, Initialize() will apply m_pCurrentSelector.
+  }
+
+  void Mapper::SetPoseFixedPredicate(std::function<bool(int)> fn)
+  {
+    m_PoseFixedPredicate = std::move(fn);
+    if (m_pScanOptimizer)
+    {
+      m_pScanOptimizer->setNodeFixedPredicate(m_PoseFixedPredicate);
+    }
   }
 
   ScanSolver* Mapper::getScanSolver()

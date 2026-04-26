@@ -4,8 +4,8 @@
  * Wires the remapping feature into the slam_toolbox runtime:
  *   - reads `remapping_polygon` / `remapping_polygon_units` ROS params,
  *   - queues pixel-coord polygons until the map's grid dimensions are known,
- *   - installs the node-fixed predicate on the solver so non-remap nodes
- *     stay pinned during CERES optimisation,
+ *   - installs the node-fixed predicate on the mapper so non-remap nodes
+ *     stay pinned during pose-graph optimisation,
  *   - installs the loop-closure candidate filter so scans superseded by a
  *     later remapping session are skipped.
  *
@@ -55,10 +55,11 @@ private:
 };
 
 // Pin all nodes not belonging to the current remapping session during
-// CERES optimisation.  The predicate reads through `smapper`; caller
-// must keep smapper alive at least as long as `solver`.
-void installFixedPosePredicate(karto::ScanSolver& solver,
-                               mapper_utils::SMapper& smapper);
+// pose-graph optimisation.  Installed on the mapper, which forwards it
+// to whichever scan solver is (or later becomes) attached.  The
+// predicate reads through `smapper`; caller must keep smapper alive at
+// least as long as the mapper.
+void installFixedPosePredicate(mapper_utils::SMapper& smapper);
 
 // Drop candidate scans whose recorded session no longer owns the cell
 // at their position.  No-op when `selector` is null.  Safe to call

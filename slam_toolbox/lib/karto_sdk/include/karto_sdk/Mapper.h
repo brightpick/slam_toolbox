@@ -2058,6 +2058,15 @@ namespace karto
     void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
 
     /**
+     * Set an optional predicate that returns true when a pose-graph node
+     * should be held fixed (constant) during optimisation.  The predicate
+     * is stored on the mapper and forwarded to the currently-attached
+     * scan solver, as well as to any solver attached later via
+     * SetScanSolver().  Pass a default-constructed std::function to clear.
+     */
+    void SetPoseFixedPredicate(std::function<bool(int)> fn);
+
+    /**
      * Gets scan optimizer used by mapper when closing the loop
      * @return pSolver
      */
@@ -2184,6 +2193,9 @@ namespace karto
     // Persists across deserialization cycles; applied to the graph in
     // Initialize() whenever a (new) graph is created or replaced.
     LoopClosureCandidateSelector* m_pCurrentSelector;
+    // Persists across SetScanSolver() calls; forwarded to the attached
+    // solver whenever one is present.
+    std::function<bool(int)> m_PoseFixedPredicate;
     LocalizationScanVertices m_LocalizationScanVertices;
 
 

@@ -142,10 +142,9 @@ void RemappingConfigurator::resolvePendingPolygon(
   pending_pixel_polygon_.reset();
 }
 
-void installFixedPosePredicate(karto::ScanSolver& solver,
-                               mapper_utils::SMapper& smapper)
+void installFixedPosePredicate(mapper_utils::SMapper& smapper)
 {
-  solver.setNodeFixedPredicate(
+  smapper.getMapper()->SetPoseFixedPredicate(
     [&smapper](int id) {
       return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
     });

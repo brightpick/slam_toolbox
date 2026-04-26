@@ -132,7 +132,7 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
 
-  installFixedPosePredicate(*solver_, *smapper_);
+  installFixedPosePredicate(*smapper_);
 }
 
 /*****************************************************************************/
