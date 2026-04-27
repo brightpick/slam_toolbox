@@ -1,5 +1,5 @@
 /*
- * Direct unit tests for slam_toolbox::polygon_fill.
+ * Direct unit tests for the polygon_fill helpers.
  *
  * The function is exercised indirectly through the ownership-image tests in
  * remap_bbox_test.cpp, but that's through the SMapper + scan machinery.
@@ -15,9 +15,9 @@
 
 #include "slam_toolbox/remapping/polygon_fill.hpp"
 
-using slam_toolbox::polygon_fill::fillSimplePolygon;
-using slam_toolbox::polygon_fill::isSimplePolygon;
-using slam_toolbox::polygon_fill::worldToGridPolygon;
+using slam_toolbox::fillSimplePolygon;
+using slam_toolbox::isSimplePolygon;
+using slam_toolbox::worldToGridPolygon;
 using Vec = karto::Vector2<kt_double>;
 
 namespace

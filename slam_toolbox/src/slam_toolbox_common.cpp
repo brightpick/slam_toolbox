@@ -913,7 +913,7 @@ bool SlamToolbox::startRemappingCallback(
   switch (req.units)
   {
     case Req::UNITS_PIXELS:
-      polygon = polygon_units::pixelToWorld(polygon, offset, resolution_, height);
+      polygon = pixelPolygonToWorld(polygon, offset, resolution_, height);
       break;
     case Req::UNITS_WORLD:
       break;

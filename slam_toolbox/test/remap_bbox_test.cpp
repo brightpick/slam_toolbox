@@ -108,7 +108,7 @@ constexpr double kResolution = 0.1;
 
 // Build an ownership image where the given polygon (world coords) is owned
 // by kRemapSessionId and everything else by kBaseSessionId.  Delegates the
-// rasterization to slam_toolbox::polygon_fill::fillSimplePolygon, the same
+// rasterization to slam_toolbox::fillSimplePolygon, the same
 // function production buildOwnershipImage uses.
 std::unique_ptr<karto::Grid<kt_int32s>> buildTestOwnership(
     const karto::LocalizedRangeScanVector& scans,
@@ -126,9 +126,9 @@ std::unique_ptr<karto::Grid<kt_int32s>> buildTestOwnership(
   const kt_int32s widthStep = grid->GetWidthStep();
   std::fill(data, data + widthStep * height, kBaseSessionId);
 
-  const auto polyGrid = slam_toolbox::polygon_fill::worldToGridPolygon(
+  const auto polyGrid = slam_toolbox::worldToGridPolygon(
     polygonWorld, offset, kResolution);
-  slam_toolbox::polygon_fill::fillSimplePolygon<kt_int32s>(
+  slam_toolbox::fillSimplePolygon<kt_int32s>(
     data, width, height, widthStep, polyGrid, kRemapSessionId);
 
   return grid;

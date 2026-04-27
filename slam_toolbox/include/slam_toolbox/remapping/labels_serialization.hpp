@@ -126,7 +126,7 @@ inline bool loadLabels(const std::string& filename,
         continue;
       }
 
-      if (!polygon_fill::isSimplePolygon(polygon))
+      if (!isSimplePolygon(polygon))
       {
         ROS_ERROR("loadLabels: session %d polygon is "
                   "self-intersecting — session skipped.", sid);

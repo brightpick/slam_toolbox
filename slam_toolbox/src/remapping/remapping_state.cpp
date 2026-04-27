@@ -27,7 +27,7 @@ void RemappingState::registerNode(int node_id)
 
 bool RemappingState::setRemapping(Polygon polygon)
 {
-  if (!polygon_fill::isSimplePolygon(polygon))
+  if (!isSimplePolygon(polygon))
   {
     ROS_ERROR("RemappingState::setRemapping: rejected polygon with %zu vertices "
               "— it must have at least 3 vertices and must not self-intersect.",

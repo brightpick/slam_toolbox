@@ -22,8 +22,6 @@
 
 namespace slam_toolbox
 {
-namespace polygon_fill
-{
 
 // Return false if the polygon is degenerate (< 3 vertices) or self-intersecting.
 // Only strict crossings are detected — polygons whose edges merely touch (a
@@ -163,7 +161,6 @@ inline std::vector<karto::Vector2<kt_double>> worldToGridPolygon(
   return out;
 }
 
-}  // namespace polygon_fill
 }  // namespace slam_toolbox
 
 #endif  // SLAM_TOOLBOX_POLYGON_FILL_H_

@@ -64,7 +64,7 @@ void OwnershipImage::build(
   // Size the image to cover the bbox, using target_offset as origin so
   // target-grid cell indices are directly valid in the ownership image
   // (Option A alignment).  Width/height include the last painted cell:
-  // polygon_fill::fillSimplePolygon paints up to `floor(max_grid_coord)`,
+  // fillSimplePolygon paints up to `floor(max_grid_coord)`,
   // so the required width is `floor(max_grid_coord) + 1`.  Cells outside
   // the resulting image are implicitly session 0 — see sessionAt().
   const kt_int32s width = std::max<kt_int32s>(
@@ -97,9 +97,9 @@ void OwnershipImage::build(
   auto paintPolygon = [&](int session_id,
                           const std::vector<karto::Vector2<kt_double>>& polyWorld)
   {
-    const auto polyGrid = polygon_fill::worldToGridPolygon(
+    const auto polyGrid = worldToGridPolygon(
       polyWorld, target_offset, resolution);
-    polygon_fill::fillSimplePolygon<kt_int32s>(
+    fillSimplePolygon<kt_int32s>(
       data, width, height, widthStep, polyGrid, session_id);
   };
 

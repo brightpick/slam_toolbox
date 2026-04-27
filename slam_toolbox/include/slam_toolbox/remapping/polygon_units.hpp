@@ -23,17 +23,14 @@
 
 namespace slam_toolbox
 {
-namespace polygon_units
-{
 
 // Convert a polygon expressed in PGM-pixel coords to world coords using
 // the target grid's `offset`, `resolution`, and pixel `height`.
-Polygon pixelToWorld(const Polygon& pixel_poly,
-                     const karto::Vector2<kt_double>& offset,
-                     kt_double resolution,
-                     kt_int32s height);
+Polygon pixelPolygonToWorld(const Polygon& pixel_poly,
+                            const karto::Vector2<kt_double>& offset,
+                            kt_double resolution,
+                            kt_int32s height);
 
-}  // namespace polygon_units
 }  // namespace slam_toolbox
 
 #endif  // SLAM_TOOLBOX_POLYGON_UNITS_H_
