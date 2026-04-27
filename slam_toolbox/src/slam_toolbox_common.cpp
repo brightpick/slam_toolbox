@@ -715,11 +715,8 @@ void SlamToolbox::loadSerializedPoseGraph(
   // The mapper object was just replaced. Any selector holding a raw Mapper*
   // must update its pointer, and the selector must be re-registered on the
   // new mapper's graph so it is not null when loop closure runs.
-  if (candidate_selector_)
-  {
-    candidate_selector_->setMapper(smapper_->getMapper());
-    smapper_->setCandidateSelector(candidate_selector_.get());
-  }
+  candidate_selector_->setMapper(smapper_->getMapper());
+  smapper_->setCandidateSelector(candidate_selector_.get());
 
   closure_assistant_->setMapper(smapper_->getMapper());
 
@@ -775,13 +772,8 @@ void SlamToolbox::loadSerializedPoseGraph(
     ROS_ERROR("Invalid sensor pointer in dataset. Unable to register sensor.");
   }
 
-  // NOTE: solver_->Compute() is deliberately NOT called here.  The fixed-node
-  // predicate consults smapper_->remappingState().getRemappingPolygon(), which is only populated
-  // after this function returns — in the pending-pixel-polygon resolution
-  // branch of deserializePoseGraphCallback.  Running Compute here would
-  // leave every loaded node unpinned (apart from first_node_), letting the
-  // solver nudge the whole previous map before the remapping filter is
-  // active.  The caller invokes Compute at the correct point.
+  solver_->Compute();
+
   return;
 }
 
@@ -832,11 +824,6 @@ bool SlamToolbox::deserializePoseGraphCallback(
   // move-assignment keeps the same address, so the captures stay valid.
   smapper_->remappingState() = RemappingState{
     std::move(node_session_ids), std::move(session_polygons)};
-
-  // Run the post-load optimisation now that labels are in place — the
-  // fixed-node predicate depends on them.  Pulled out of
-  // loadSerializedPoseGraph so old-session nodes stay pinned here.
-  solver_->Compute();
 
   updateMap();
 

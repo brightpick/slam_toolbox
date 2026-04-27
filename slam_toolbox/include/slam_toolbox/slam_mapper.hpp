@@ -36,13 +36,23 @@ public:
   SMapper();
   ~SMapper();
 
+  // get occupancy grid from scans
   karto::OccupancyGrid* getOccupancyGrid(const double& resolution);
 
+  // convert Karto pose to TF pose
   tf2::Transform toTfPose(const karto::Pose2& pose) const;
+
+  // convert TF pose to karto pose
   karto::Pose2 toKartoPose(const tf2::Transform& pose) const;
 
   void configure(const ros::NodeHandle& nh);
   void Reset();
+
+  // // processors
+  // kt_bool ProcessAtDock(LocalizedRangeScan* pScan);
+  // kt_bool ProcessAgainstNode(LocalizedRangeScan* pScan,  const int& nodeId);
+  // kt_bool ProcessAgainstNodesNearBy(LocalizedRangeScan* pScan);
+  // kt_bool ProcessLocalization(LocalizedRangeScan* pScan);
 
   void setMapper(karto::Mapper* mapper);
   karto::Mapper* getMapper();

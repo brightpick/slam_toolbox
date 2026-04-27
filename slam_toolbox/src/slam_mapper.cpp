@@ -30,7 +30,7 @@ namespace mapper_utils
 SMapper::SMapper()
 /*****************************************************************************/
 {
-  mapper_ = std::make_unique<karto::Mapper>();
+  mapper_ = std::make_unique<karto::Mapper>(); 
 }
 
 /*****************************************************************************/
@@ -142,7 +142,7 @@ void SMapper::configure(const ros::NodeHandle& nh)
   {
     mapper_->setParamUseScanMatching(use_scan_matching);
   }
-
+  
   bool use_scan_barycenter;
   if(nh.getParam("use_scan_barycenter", use_scan_barycenter))
   {
