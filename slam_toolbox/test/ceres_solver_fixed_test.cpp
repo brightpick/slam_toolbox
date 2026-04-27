@@ -107,18 +107,18 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   // Polygon is arbitrary; the predicate only cares which session a node
   // belongs to.
   mapper_utils::SMapper smapper;
-  smapper.sessionState().registerNode(0);
-  smapper.sessionState().registerNode(1);
+  smapper.remappingState().registerNode(0);
+  smapper.remappingState().registerNode(1);
 
   std::vector<karto::Vector2<kt_double>> polygon{
     {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
-  ASSERT_TRUE(smapper.sessionState().setRemapping(polygon));
+  ASSERT_TRUE(smapper.remappingState().setRemapping(polygon));
 
-  smapper.sessionState().registerNode(2);
+  smapper.remappingState().registerNode(2);
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;
-  solver.setNodeFixedPredicate(smapper.sessionState().makeFixedPosePredicate());
+  solver.setNodeFixedPredicate(smapper.remappingState().makeFixedPosePredicate());
 
   // AddNode order: node 0 first so it becomes first_node_
   solver.AddNode(v0);
@@ -192,13 +192,13 @@ TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
   auto* e02 = makeEdge(v0, v2, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(2.0, 0.0, 0.0));
 
   mapper_utils::SMapper smapper;
-  smapper.sessionState().registerNode(0);
-  smapper.sessionState().registerNode(1);
-  smapper.sessionState().registerNode(2);
+  smapper.remappingState().registerNode(0);
+  smapper.remappingState().registerNode(1);
+  smapper.remappingState().registerNode(2);
   // setRemapping intentionally not called — default session label is session 0
 
   solver_plugins::CeresSolver solver;
-  solver.setNodeFixedPredicate(smapper.sessionState().makeFixedPosePredicate());
+  solver.setNodeFixedPredicate(smapper.remappingState().makeFixedPosePredicate());
 
   solver.AddNode(v0);
   solver.AddNode(v1);

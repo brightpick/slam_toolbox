@@ -23,7 +23,7 @@
 #include "karto_sdk/Mapper.h"
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 
 namespace mapper_utils
 {
@@ -52,9 +52,9 @@ public:
   void clearLocalizationBuffer();
 
   // Session labels, remapping config, and the ownership image — see
-  // slam_toolbox/session_state.hpp.
-  slam_toolbox::SessionState& sessionState() { return session_; }
-  const slam_toolbox::SessionState& sessionState() const { return session_; }
+  // slam_toolbox/remapping_state.hpp.
+  slam_toolbox::RemappingState& remappingState() { return remapping_state_; }
+  const slam_toolbox::RemappingState& remappingState() const { return remapping_state_; }
 
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
@@ -66,7 +66,7 @@ private:
   karto::OccupancyGrid* buildRemapGrid(
     const karto::LocalizedRangeScanVector& scans, double resolution);
 
-  slam_toolbox::SessionState session_;
+  slam_toolbox::RemappingState remapping_state_;
 };
 
 } // end namespace

@@ -1,5 +1,5 @@
 catkin_add_gtest(${PROJECT_NAME}_unittest
-    session_state_test.cpp
+    remapping_state_test.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}_unittest

@@ -66,7 +66,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 /*****************************************************************************/
 {
   const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
-  if (!session_.getRemappingPolygon())
+  if (!remapping_state_.getRemappingPolygon())
   {
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
@@ -88,7 +88,7 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   //
   // The base-session set is exactly the set of nodes that get pinned during
   // optimisation — reuse that predicate.
-  auto isBaseNode = session_.makeFixedPosePredicate();
+  auto isBaseNode = remapping_state_.makeFixedPosePredicate();
   karto::LocalizedRangeScanVector base_scans;
   base_scans.reserve(scans.size());
   std::copy_if(scans.begin(), scans.end(), std::back_inserter(base_scans),
@@ -98,7 +98,7 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
   karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
-  session_.buildOwnershipImage(offset, resolution);
+  remapping_state_.buildOwnershipImage(offset, resolution);
 
   // Construct the grid directly with the base-scan bounds, then render ALL
   // scans through the ownership filter.  Do NOT use the static
@@ -106,7 +106,7 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   // on the full scan vector, which would re-grow the footprint and shift the
   // origin sub-pixel.
   auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
-  result->CreateFromScans(scans, session_.makeGridCellPredicate());
+  result->CreateFromScans(scans, remapping_state_.makeGridCellPredicate());
   return result;
 }
 

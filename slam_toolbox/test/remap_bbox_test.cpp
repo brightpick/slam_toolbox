@@ -544,16 +544,16 @@ TEST(SMapperPolygonValidationTest, SelfIntersectingPolygonIsRejected)
   std::vector<karto::Vector2<kt_double>> bowtie{
     {0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}
   };
-  EXPECT_FALSE(smapper.sessionState().setRemapping(bowtie));
-  EXPECT_FALSE(smapper.sessionState().getRemappingPolygon().has_value());
+  EXPECT_FALSE(smapper.remappingState().setRemapping(bowtie));
+  EXPECT_FALSE(smapper.remappingState().getRemappingPolygon().has_value());
 }
 
 TEST(SMapperPolygonValidationTest, TooFewVerticesIsRejected)
 {
   mapper_utils::SMapper smapper;
   std::vector<karto::Vector2<kt_double>> line{{0.0, 0.0}, {1.0, 0.0}};
-  EXPECT_FALSE(smapper.sessionState().setRemapping(line));
-  EXPECT_FALSE(smapper.sessionState().getRemappingPolygon().has_value());
+  EXPECT_FALSE(smapper.remappingState().setRemapping(line));
+  EXPECT_FALSE(smapper.remappingState().getRemappingPolygon().has_value());
 }
 
 
@@ -590,7 +590,7 @@ protected:
     {
       auto* scan = makeScan(/*id=*/0, ox, oy, range, kLaser, heading);
       mgr_->AddScan(scan);
-      smapper_.sessionState().registerNode(scan->GetUniqueId());
+      smapper_.remappingState().registerNode(scan->GetUniqueId());
       scans_.push_back(scan);
     }
   }
@@ -613,7 +613,7 @@ protected:
   // addScans() calls will tag their scans with the new session.
   void enableRemapping()
   {
-    ASSERT_TRUE(smapper_.sessionState().setRemapping(
+    ASSERT_TRUE(smapper_.remappingState().setRemapping(
       makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
   }
 
@@ -733,7 +733,7 @@ TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
 // the current remapping polygon last.  Higher-id sessions must therefore
 // overwrite lower-id sessions in overlapping cells, and the current session
 // must overwrite every historical session in cells it claims.  Tested
-// directly against OwnershipImage — no SessionState wrapper.
+// directly against OwnershipImage — no RemappingState wrapper.
 // ═════════════════════════════════════════════════════════════════════════════
 
 TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)

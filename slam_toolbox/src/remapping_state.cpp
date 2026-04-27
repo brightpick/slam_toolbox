@@ -2,7 +2,7 @@
  * Copyright (c) 2026, Brightpick
  */
 
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 #include "slam_toolbox/polygon_fill.hpp"
 
 #include <algorithm>
@@ -11,8 +11,8 @@
 namespace slam_toolbox
 {
 
-SessionState::SessionState(NodeSessionMap node_session_ids,
-                           SessionPolygonMap session_polygons)
+RemappingState::RemappingState(NodeSessionMap node_session_ids,
+                               SessionPolygonMap session_polygons)
   : node_session_ids_(std::move(node_session_ids)),
     session_polygons_(std::move(session_polygons))
 {
@@ -20,16 +20,16 @@ SessionState::SessionState(NodeSessionMap node_session_ids,
 
 // ---- Mutators ----
 
-void SessionState::registerNode(int node_id)
+void RemappingState::registerNode(int node_id)
 {
   node_session_ids_[node_id] = current_session_id_;
 }
 
-bool SessionState::setRemapping(Polygon polygon)
+bool RemappingState::setRemapping(Polygon polygon)
 {
   if (!polygon_fill::isSimplePolygon(polygon))
   {
-    ROS_ERROR("SessionState::setRemapping: rejected polygon with %zu vertices "
+    ROS_ERROR("RemappingState::setRemapping: rejected polygon with %zu vertices "
               "— it must have at least 3 vertices and must not self-intersect.",
               polygon.size());
     return false;
@@ -39,14 +39,14 @@ bool SessionState::setRemapping(Polygon polygon)
   // it is serialized to .labels on save.
   current_session_id_ = computeNextSessionId();
   session_polygons_[current_session_id_] = polygon;
-  ROS_INFO("SessionState: remapping session %d configured "
+  ROS_INFO("RemappingState: remapping session %d configured "
            "(%zu-vertex polygon).", current_session_id_, polygon.size());
   remapping_polygon_ = std::move(polygon);
   return true;
 }
 
-void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
-                                       kt_double resolution)
+void RemappingState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
+                                         kt_double resolution)
 {
   if (!remapping_polygon_) return;
   ownership_image_.build(target_offset, resolution,
@@ -57,7 +57,7 @@ void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_o
 
 // ---- Predicate factories ----
 
-std::function<bool(int)> SessionState::makeFixedPosePredicate() const
+std::function<bool(int)> RemappingState::makeFixedPosePredicate() const
 {
   return [this](int id) {
     return remapping_polygon_.has_value() &&
@@ -66,7 +66,7 @@ std::function<bool(int)> SessionState::makeFixedPosePredicate() const
 }
 
 std::function<bool(karto::LocalizedRangeScan*)>
-SessionState::makeLoopClosureFilter() const
+RemappingState::makeLoopClosureFilter() const
 {
   return [this](karto::LocalizedRangeScan* pScan) -> bool {
     const int scan_sid = getSessionId(pScan->GetUniqueId());
@@ -78,7 +78,7 @@ SessionState::makeLoopClosureFilter() const
 
 std::function<bool(karto::LocalizedRangeScan*,
                    const karto::Vector2<kt_int32s>&)>
-SessionState::makeGridCellPredicate() const
+RemappingState::makeGridCellPredicate() const
 {
   return [this](karto::LocalizedRangeScan* pScan,
                 const karto::Vector2<kt_int32s>& cell) -> bool {
@@ -89,7 +89,7 @@ SessionState::makeGridCellPredicate() const
 
 // ---- Internals ----
 
-int SessionState::computeNextSessionId() const
+int RemappingState::computeNextSessionId() const
 {
   int max_sid = 0;
   for (const auto& [node_id, session_id] : node_session_ids_)
@@ -103,7 +103,7 @@ int SessionState::computeNextSessionId() const
   return max_sid + 1;
 }
 
-int SessionState::getSessionId(int node_id) const
+int RemappingState::getSessionId(int node_id) const
 {
   auto it = node_session_ids_.find(node_id);
   return it != node_session_ids_.end() ? it->second : kBaseSessionId;

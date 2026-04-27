@@ -32,7 +32,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 
 namespace slam_toolbox
 {

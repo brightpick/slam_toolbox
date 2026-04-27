@@ -2,7 +2,7 @@
  * Copyright (c) 2026, Brightpick
  *
  * Pure conversion between PGM-pixel and world coordinates for remapping
- * polygons.  Lives outside SessionState to keep that class free of any
+ * polygons.  Lives outside RemappingState to keep that class free of any
  * Karto Mapper / OccupancyGrid coupling — the caller computes grid
  * dimensions and passes them in here.
  *
@@ -19,7 +19,7 @@
 
 #include <karto_sdk/Karto.h>
 
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 
 namespace slam_toolbox
 {

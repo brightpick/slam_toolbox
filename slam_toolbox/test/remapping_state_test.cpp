@@ -2,13 +2,13 @@
 
 #include <unordered_map>
 
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
 using slam_toolbox::NodeSessionMap;
 using slam_toolbox::Polygon;
 using slam_toolbox::SessionPolygonMap;
-using slam_toolbox::SessionState;
+using slam_toolbox::RemappingState;
 
 namespace
 {
@@ -26,16 +26,16 @@ Polygon triangle()
 // hooks).  Internal fields like the per-node session id and the
 // "current" session id are deliberately not poked at directly.
 
-TEST(SessionStateTest, RegisterWithoutRemappingTagsBaseSession)
+TEST(RemappingStateTest, RegisterWithoutRemappingTagsBaseSession)
 {
-  SessionState s;
+  RemappingState s;
   s.registerNode(1);
   EXPECT_EQ(s.getAllNodeSessionIds().at(1), slam_toolbox::kBaseSessionId);
 }
 
-TEST(SessionStateTest, SetRemappingTagsSubsequentRegistrations)
+TEST(RemappingStateTest, SetRemappingTagsSubsequentRegistrations)
 {
-  SessionState s;
+  RemappingState s;
   s.registerNode(1);                         // pre-remap → base
   ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(2);                         // post-remap → current
@@ -52,9 +52,9 @@ TEST(SessionStateTest, SetRemappingTagsSubsequentRegistrations)
   EXPECT_TRUE(pinned(999));  // unknown node defaults to base
 }
 
-TEST(SessionStateTest, SecondSetRemappingAdvancesSession)
+TEST(RemappingStateTest, SecondSetRemappingAdvancesSession)
 {
-  SessionState s;
+  RemappingState s;
 
   ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(1);
@@ -71,19 +71,19 @@ TEST(SessionStateTest, SecondSetRemappingAdvancesSession)
   EXPECT_EQ(s.getAllSessionPolygons().size(), 2u);
 }
 
-TEST(SessionStateTest, SetRemappingRejectsInvalidPolygon)
+TEST(RemappingStateTest, SetRemappingRejectsInvalidPolygon)
 {
-  SessionState s;
+  RemappingState s;
   Polygon bowtie{{0.0, 0.0}, {1.0, 1.0}, {1.0, 0.0}, {0.0, 1.0}};
   EXPECT_FALSE(s.setRemapping(bowtie));
   EXPECT_FALSE(s.getRemappingPolygon().has_value());
 }
 
-TEST(SessionStateTest, ConstructFromLoadedHistory)
+TEST(RemappingStateTest, ConstructFromLoadedHistory)
 {
   NodeSessionMap loaded_nodes{{100, 7}};
   SessionPolygonMap loaded_polys{{7, triangle()}};
-  SessionState s{loaded_nodes, loaded_polys};
+  RemappingState s{loaded_nodes, loaded_polys};
 
   const auto& nodes = s.getAllNodeSessionIds();
   EXPECT_EQ(nodes.size(), 1u);
@@ -92,7 +92,7 @@ TEST(SessionStateTest, ConstructFromLoadedHistory)
   EXPECT_EQ(s.getAllSessionPolygons().size(), 1u);
 }
 
-TEST(SessionStateTest, SetRemappingAfterLoadAvoidsSessionIdCollision)
+TEST(RemappingStateTest, SetRemappingAfterLoadAvoidsSessionIdCollision)
 {
   // Production flow: deserialize completes (loads history with session ids
   // 1 and 2), then user calls start_remapping — setRemapping must pick a
@@ -101,7 +101,7 @@ TEST(SessionStateTest, SetRemappingAfterLoadAvoidsSessionIdCollision)
   SessionPolygonMap loaded_polys{
     {1, triangle()},
     {2, triangle()}};
-  SessionState s{loaded_nodes, loaded_polys};
+  RemappingState s{loaded_nodes, loaded_polys};
 
   ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(200);
@@ -114,13 +114,13 @@ TEST(SessionStateTest, SetRemappingAfterLoadAvoidsSessionIdCollision)
 
 // ---- SMapper wiring ----
 
-TEST(SMapperSessionStateTest, AccessorReturnsUsableState)
+TEST(SMapperRemappingStateTest, AccessorReturnsUsableState)
 {
   mapper_utils::SMapper smapper;
-  ASSERT_TRUE(smapper.sessionState().setRemapping(triangle()));
-  smapper.sessionState().registerNode(42);
+  ASSERT_TRUE(smapper.remappingState().setRemapping(triangle()));
+  smapper.remappingState().registerNode(42);
 
-  const auto& nodes = smapper.sessionState().getAllNodeSessionIds();
+  const auto& nodes = smapper.remappingState().getAllNodeSessionIds();
   ASSERT_EQ(nodes.count(42), 1u);
   EXPECT_NE(nodes.at(42), slam_toolbox::kBaseSessionId);
 }

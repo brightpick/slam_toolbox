@@ -107,7 +107,7 @@ void SlamToolbox::setCandidateSelector(ros::NodeHandle& private_nh)
   }
   smapper_->setCandidateSelector(candidate_selector_.get());
   candidate_selector_->setCandidateFilter(
-    smapper_->sessionState().makeLoopClosureFilter());
+    smapper_->remappingState().makeLoopClosureFilter());
 }
 
 /*****************************************************************************/
@@ -135,7 +135,7 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
   smapper_->getMapper()->SetScanSolver(solver_.get());
 
   smapper_->getMapper()->SetPoseFixedPredicate(
-    smapper_->sessionState().makeFixedPosePredicate());
+    smapper_->remappingState().makeFixedPosePredicate());
 }
 
 /*****************************************************************************/
@@ -567,7 +567,7 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
       scan_holder_->addScan(*scan);
     }
 
-    smapper_->sessionState().registerNode(range_scan->GetUniqueId());
+    smapper_->remappingState().registerNode(range_scan->GetUniqueId());
     setTransformFromPoses(range_scan->GetCorrectedPose(), karto_pose,
       scan->header.stamp, update_reprocessing_transform);
     dataset_->Add(range_scan);
@@ -665,8 +665,8 @@ bool SlamToolbox::serializePoseGraphCallback(
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
   serialization::write(filename, *smapper_->getMapper(), *dataset_,
-    smapper_->sessionState().getAllNodeSessionIds(),
-    smapper_->sessionState().getAllSessionPolygons());
+    smapper_->remappingState().getAllNodeSessionIds(),
+    smapper_->remappingState().getAllSessionPolygons());
   return true;
 }
 
@@ -776,7 +776,7 @@ void SlamToolbox::loadSerializedPoseGraph(
   }
 
   // NOTE: solver_->Compute() is deliberately NOT called here.  The fixed-node
-  // predicate consults smapper_->sessionState().getRemappingPolygon(), which is only populated
+  // predicate consults smapper_->remappingState().getRemappingPolygon(), which is only populated
   // after this function returns — in the pending-pixel-polygon resolution
   // branch of deserializePoseGraphCallback.  Running Compute here would
   // leave every loaded node unpinned (apart from first_node_), letting the
@@ -828,9 +828,9 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   loadSerializedPoseGraph(mapper, dataset);
   // Replace the session state with the freshly-loaded history.  Predicates
-  // were wired at startup with [this] capture into smapper_->sessionState();
+  // were wired at startup with [this] capture into smapper_->remappingState();
   // move-assignment keeps the same address, so the captures stay valid.
-  smapper_->sessionState() = SessionState{
+  smapper_->remappingState() = RemappingState{
     std::move(node_session_ids), std::move(session_polygons)};
 
   // Run the post-load optimisation now that labels are in place — the
@@ -936,7 +936,7 @@ bool SlamToolbox::startRemappingCallback(
       return true;
   }
 
-  if (!smapper_->sessionState().setRemapping(std::move(polygon)))
+  if (!smapper_->remappingState().setRemapping(std::move(polygon)))
   {
     resp.result = Resp::RESULT_INVALID_POLYGON;
     resp.message = "polygon must have >= 3 vertices and not self-intersect";

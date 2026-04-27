@@ -4,7 +4,7 @@
 
 #include "slam_toolbox/ownership_image.hpp"
 #include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/session_state.hpp"
+#include "slam_toolbox/remapping_state.hpp"
 
 #include <algorithm>
 #include <cmath>

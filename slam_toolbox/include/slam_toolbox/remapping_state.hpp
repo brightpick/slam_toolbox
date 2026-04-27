@@ -1,19 +1,20 @@
 /*
  * Copyright (c) 2026, Brightpick
  *
- * Holds the "which scans belong to which session" state that underpins
- * the remapping feature:
+ * Holds all the state behind the remapping feature:
  *   - node_session_ids: per-pose session id (pose_id → session_id),
  *   - session_polygons: area of each session (session_id → polygon),
  *   - the currently-active remapping config (area + assigned session id),
- *   - the ownership image derived from the above.
+ *   - the ownership image derived from the above,
+ *   - the predicate factories that the solver / loop-closure / grid hooks
+ *     consume.
  *
  * Lifted out of SMapper so this state and its API live in one place and
  * the original SMapper has minimal feature-specific churn.
  */
 
-#ifndef SLAM_TOOLBOX_SESSION_STATE_H_
-#define SLAM_TOOLBOX_SESSION_STATE_H_
+#ifndef SLAM_TOOLBOX_REMAPPING_STATE_H_
+#define SLAM_TOOLBOX_REMAPPING_STATE_H_
 
 #include <functional>
 #include <optional>
@@ -29,7 +30,7 @@ namespace slam_toolbox
 
 // Canonical shared types for session bookkeeping.  Defined here (the domain
 // owner) and re-used by labels_serialization so there's a single source of
-// truth for the map shapes that flow between save/load and SessionState.
+// truth for the map shapes that flow between save/load and RemappingState.
 using Polygon = std::vector<karto::Vector2<kt_double>>;
 using NodeSessionMap = std::unordered_map<int, int>;
 using SessionPolygonMap = std::unordered_map<int, Polygon>;
@@ -41,18 +42,18 @@ using SessionPolygonMap = std::unordered_map<int, Polygon>;
 // node_session_ids are treated as session 0.
 constexpr int kBaseSessionId = 0;
 
-class SessionState
+class RemappingState
 {
 public:
   // Construct an empty state — no session history, no active remapping.
-  SessionState() = default;
+  RemappingState() = default;
 
   // Construct a state populated with history loaded from disk (typically
   // from a `.labels` sidecar after deserializing a `.posegraph`).  No
   // remapping is active; subsequent registerNode() calls land in the
   // base session until setRemapping() is invoked.
-  SessionState(NodeSessionMap node_session_ids,
-               SessionPolygonMap session_polygons);
+  RemappingState(NodeSessionMap node_session_ids,
+                 SessionPolygonMap session_polygons);
 
   // ---- Mutators ----
 
@@ -91,12 +92,12 @@ public:
   // True when the node should be held fixed during pose-graph optimisation
   // (i.e. it does not belong to the active remapping session).  Always
   // false when no remapping is configured.  Captures *this by reference;
-  // SessionState must outlive the returned callable.
+  // RemappingState must outlive the returned callable.
   std::function<bool(int)> makeFixedPosePredicate() const;
 
   // True when a loop-closure candidate should be dropped (its recorded
   // session no longer owns the cell at its current corrected pose).
-  // Captures *this by reference; SessionState must outlive the returned
+  // Captures *this by reference; RemappingState must outlive the returned
   // callable.
   std::function<bool(karto::LocalizedRangeScan*)> makeLoopClosureFilter() const;
 
@@ -104,7 +105,7 @@ public:
   // during ray-tracing — i.e. when the scan and the cell agree on which
   // session owns the cell.  Caller must call buildOwnershipImage() with
   // the target grid's offset/resolution before using the returned
-  // predicate.  Captures *this by reference; SessionState must outlive
+  // predicate.  Captures *this by reference; RemappingState must outlive
   // the returned callable.
   std::function<bool(karto::LocalizedRangeScan*,
                      const karto::Vector2<kt_int32s>&)>
@@ -123,4 +124,4 @@ private:
 
 }  // namespace slam_toolbox
 
-#endif  // SLAM_TOOLBOX_SESSION_STATE_H_
+#endif  // SLAM_TOOLBOX_REMAPPING_STATE_H_
