@@ -191,16 +191,31 @@ void CeresSolver::Compute()
     was_constant_set_ = !was_constant_set_;
   }
 
-  // Pin nodes that the caller marked as fixed (e.g. all non-remapping nodes).
+  // Pin or unpin every parameter block based on the current predicate
+  // verdict.  Symmetric on purpose: SetParameterBlockConstant is sticky
+  // across Solve() calls, so a node fixed in an earlier Compute would
+  // stay fixed if we only ever pinned.  Re-applying both directions each
+  // call makes Compute reflect the predicate's current state, even if a
+  // node's verdict flipped back to free.  first_node_ is always kept
+  // constant regardless — it's the gauge fix, owned by the
+  // was_constant_set_ mechanism above.
   if (is_node_fixed_)
   {
     for (auto& [id, vec] : *nodes_)
     {
-      if (is_node_fixed_(id))
+      const bool isFirstNode =
+        (first_node_ != nodes_->end() && id == first_node_->first);
+      if (is_node_fixed_(id) || isFirstNode)
       {
         problem_->SetParameterBlockConstant(&vec(0));
         problem_->SetParameterBlockConstant(&vec(1));
         problem_->SetParameterBlockConstant(&vec(2));
+      }
+      else
+      {
+        problem_->SetParameterBlockVariable(&vec(0));
+        problem_->SetParameterBlockVariable(&vec(1));
+        problem_->SetParameterBlockVariable(&vec(2));
       }
     }
   }

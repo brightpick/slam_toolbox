@@ -232,6 +232,81 @@ TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
   delete scan2;
 }
 
+// ---------------------------------------------------------------------------
+// Predicate verdict can flip across Compute() calls.
+// ---------------------------------------------------------------------------
+//
+//  Ceres' SetParameterBlockConstant is sticky across Solve() calls.  This
+//  test guards the symmetric pin/unpin path in Compute(): a node fixed in
+//  one Compute that becomes free in the next must actually be allowed to
+//  move on the second Solve.
+//
+//  Setup:
+//    Node 0  (0, 0)  — pinned by first_node_ mechanism
+//    Node 1  (1, 0)  — initially predicate-fixed; later predicate-free
+//  Constraint:
+//    Edge 0→1 : diff (5, 0)  — wants node 1 at (5, 0); strongly inconsistent
+//                              with node 1's initial (1, 0).
+//
+//  Pass 1 (predicate fixes node 1): node 1 must stay near (1, 0)
+//          — the pin overrides the constraint.
+//  Flip predicate: node 1 is now free.
+//  Pass 2: node 1 must move toward (5, 0).  Without the symmetric unpin
+//          in Compute(), it would remain at (1, 0) because Ceres remembers
+//          the SetParameterBlockConstant from pass 1.
+// ---------------------------------------------------------------------------
+
+TEST(CeresSolverFixedPoseTest, PredicateVerdictFlipUnpinsPreviouslyFixedNode)
+{
+  auto* scan0 = makeScan(0, 0.0, 0.0);
+  auto* scan1 = makeScan(1, 1.0, 0.0);
+
+  auto* v0 = new karto::Vertex<karto::LocalizedRangeScan>(scan0);
+  auto* v1 = new karto::Vertex<karto::LocalizedRangeScan>(scan1);
+
+  auto* e01 = makeEdge(v0, v1, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(5.0, 0.0, 0.0));
+
+  // Stateful predicate the test can flip between Compute() calls.
+  bool fix_node_1 = true;
+  solver_plugins::CeresSolver solver;
+  solver.setNodeFixedPredicate(
+    [&fix_node_1](int id) { return id == 1 && fix_node_1; });
+
+  solver.AddNode(v0);
+  solver.AddNode(v1);
+  solver.AddConstraint(e01);
+
+  // --- Pass 1: node 1 is predicate-fixed.  Despite the constraint pulling
+  //     it toward (5, 0), it must stay near its initial (1, 0).
+  solver.Compute();
+
+  auto* graph = solver.getGraph();
+  ASSERT_NE(graph, nullptr);
+
+  const double tol = 1e-6;
+  ASSERT_NE(graph->find(1), graph->end());
+  EXPECT_NEAR((*graph)[1](0), 1.0, tol);
+
+  // --- Flip predicate: node 1 is now free.
+  fix_node_1 = false;
+
+  // --- Pass 2: node 1 must actually move toward (5, 0).  Without the
+  //     symmetric unpin in Compute(), it would stay at (1, 0) because
+  //     Ceres remembers the SetParameterBlockConstant from pass 1.
+  //     Ceres' default function_tolerance is 1e-3, so a slightly looser
+  //     bound is appropriate.
+  solver.Compute();
+
+  ASSERT_NE(graph->find(1), graph->end());
+  EXPECT_NEAR((*graph)[1](0), 5.0, 1e-3);
+
+  delete e01;
+  delete v0;
+  delete v1;
+  delete scan0;
+  delete scan1;
+}
+
 int main(int argc, char** argv)
 {
   // CeresSolver constructor uses ros::NodeHandle to read solver parameters.
