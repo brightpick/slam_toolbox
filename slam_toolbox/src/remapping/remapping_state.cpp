@@ -65,6 +65,13 @@ std::function<bool(int)> RemappingState::makeFixedPosePredicate() const
   };
 }
 
+std::function<bool(int)> RemappingState::makeComputeGridSizePredicate() const
+{
+  return [this](int id) {
+    return getSessionId(id) == kBaseSessionId;
+  };
+}
+
 std::function<bool(karto::LocalizedRangeScan*)>
 RemappingState::makeLoopClosureFilter() const
 {

@@ -78,19 +78,18 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   const karto::LocalizedRangeScanVector& scans, double resolution)
 /*****************************************************************************/
 {
-  // Compute grid dimensions from BASE-SESSION scans only — scans that belong
-  // to the current remapping session are excluded.  This keeps the occupancy
-  // grid's footprint and origin locked to the previously-saved map, so the
-  // remap output slots into the old PGM pixel-for-pixel.  Growing the grid
-  // would shift its origin (sub-pixel), which ripples into Bresenham
-  // differences on every cell and makes the diff outside the polygon look
-  // noisy even though the filter is working.
+  // Compute grid dimensions from BASE-session scans only (session 0 — the
+  // saved map loaded from disk).  Historical remap sessions are deliberately
+  // excluded: their scan endpoints can extend the bbox, which would grow the
+  // rendered grid across remap cycles and break the "remap output slots into
+  // the old PGM pixel-for-pixel" guarantee.  Locking to the base session
+  // keeps the footprint and origin identical no matter how many times the
+  // user has remapped.
   //
-  // The base-session set is exactly the set of nodes that get pinned during
-  // optimisation — reuse that predicate.  Karto's own grid-building path
-  // tolerates null entries in the scan vector (see CreateFromScans /
-  // ComputeDimensions in Karto.h), so guard with `s &&` here too.
-  auto isBaseNode = remapping_state_.makeFixedPosePredicate();
+  // Karto's own grid-building path tolerates null entries in the scan vector
+  // (see CreateFromScans / ComputeDimensions in Karto.h), so guard with
+  // `s &&` here too.
+  auto isBaseNode = remapping_state_.makeComputeGridSizePredicate();
   karto::LocalizedRangeScanVector base_scans;
   base_scans.reserve(scans.size());
   std::copy_if(scans.begin(), scans.end(), std::back_inserter(base_scans),

@@ -95,6 +95,17 @@ public:
   // RemappingState must outlive the returned callable.
   std::function<bool(int)> makeFixedPosePredicate() const;
 
+  // True when the node belongs to the base session (the saved map loaded
+  // from disk; nodes registered before any setRemapping() call).  Used by
+  // buildRemapGrid to lock the rendered occupancy grid's footprint to the
+  // original loaded map across remap cycles, regardless of how many
+  // historical sessions have been added since.  Distinct from
+  // makeFixedPosePredicate because that one returns true for ALL non-current
+  // sessions (so they stay pinned during optimisation), whereas this one
+  // returns true only for session 0.  Captures *this by reference;
+  // RemappingState must outlive the returned callable.
+  std::function<bool(int)> makeComputeGridSizePredicate() const;
+
   // True when a loop-closure candidate should be dropped (its recorded
   // session no longer owns the cell at its current corrected pose).
   // Captures *this by reference; RemappingState must outlive the returned
