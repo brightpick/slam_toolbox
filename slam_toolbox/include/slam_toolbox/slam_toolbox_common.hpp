@@ -36,7 +36,9 @@
 #include "slam_toolbox/get_pose_helper.hpp"
 #include "slam_toolbox/map_saver.hpp"
 #include "slam_toolbox/loop_closure_assistant.hpp"
-#include "slam_toolbox/remapping_configurator.hpp"
+#include "slam_toolbox/polygon_units.hpp"
+
+#include <slam_toolbox_msgs/StartRemapping.h>
 
 #include <string>
 #include <map>
@@ -80,6 +82,8 @@ protected:
     slam_toolbox_msgs::DeserializePoseGraph::Response& resp);
   virtual bool resetCallback(slam_toolbox_msgs::Reset::Request& req,
     slam_toolbox_msgs::Reset::Response& resp);
+  bool startRemappingCallback(slam_toolbox_msgs::StartRemapping::Request& req,
+    slam_toolbox_msgs::StartRemapping::Response& resp);
   void loadSerializedPoseGraph(std::unique_ptr<karto::Mapper>&, std::unique_ptr<karto::Dataset>&);
   void loadPoseGraphByParams(ros::NodeHandle& nh);
 
@@ -111,7 +115,7 @@ protected:
   std::unique_ptr<message_filters::Subscriber<sensor_msgs::LaserScan> > scan_filter_sub_;
   std::unique_ptr<tf2_ros::MessageFilter<sensor_msgs::LaserScan> > scan_filter_;
   ros::Publisher sst_, sstm_, pose_pub_;
-  ros::ServiceServer ssMap_, ssPauseMeasurements_, ssSerialize_, ssDesserialize_, ssReset_;
+  ros::ServiceServer ssMap_, ssPauseMeasurements_, ssSerialize_, ssDesserialize_, ssReset_, ssStartRemapping_;
 
   // Storage for ROS parameters
   std::string odom_frame_, map_frame_, base_frame_, map_name_, scan_topic_;
@@ -134,8 +138,6 @@ protected:
   std::unique_ptr<map_saver::MapSaver> map_saver_;
   std::unique_ptr<loop_closure_assistant::LoopClosureAssistant> closure_assistant_;
   std::unique_ptr<laser_utils::ScanHolder> scan_holder_;
-
-  slam_toolbox::RemappingConfigurator remapping_configurator_;
 
   // Internal state
   std::vector<std::unique_ptr<boost::thread> > threads_;

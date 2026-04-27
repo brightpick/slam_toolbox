@@ -26,6 +26,15 @@ target_link_libraries(${PROJECT_NAME}_polygon_fill_test
     ${catkin_LIBRARIES}
 )
 
+catkin_add_gtest(${PROJECT_NAME}_polygon_units_test
+    polygon_units_test.cpp
+)
+
+target_link_libraries(${PROJECT_NAME}_polygon_units_test
+    toolbox_common
+    ${catkin_LIBRARIES}
+)
+
 catkin_add_gtest(${PROJECT_NAME}_labels_serialization_test
     labels_serialization_test.cpp
 )

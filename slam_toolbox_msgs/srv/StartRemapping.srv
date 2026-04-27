@@ -1,0 +1,25 @@
+# Begin a new remapping session.  All scans accepted after this call are
+# tagged as belonging to the new session; previously-accepted scans become
+# historical and are pinned during pose-graph optimisation.  Repeatable —
+# each call advances to a fresh session, so multiple disjoint regions can
+# be remapped during a single runtime.
+
+# Coordinate frame for `polygon`.
+#   UNITS_PIXELS — vertices are in PGM pixel coords (px, py) of the
+#                  currently-loaded grid; py=0 is the top row.  This is
+#                  the default (uint8 zero-initialises).
+#   UNITS_WORLD  — vertices are already in world coords (metres).
+uint8 UNITS_PIXELS=0
+uint8 UNITS_WORLD=1
+
+geometry_msgs/Polygon polygon
+uint8 units
+---
+# Result code definitions
+uint8 RESULT_SUCCESS=0
+uint8 RESULT_INVALID_POLYGON=1   # < 3 vertices, self-intersecting, or empty
+uint8 RESULT_INVALID_UNITS=2     # units is neither UNITS_PIXELS nor UNITS_WORLD
+uint8 RESULT_NO_MAP=3            # pixel polygon requested but no map loaded yet
+
+uint8 result
+string message

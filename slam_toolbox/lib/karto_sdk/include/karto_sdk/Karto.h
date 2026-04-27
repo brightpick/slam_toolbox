@@ -6223,8 +6223,9 @@ namespace karto
      * Calculate grid dimensions from localized range scans.
      *
      * Exposed publicly so the remapping path can size the ownership image
-     * to the same footprint as the base-session scans (see
-     * slam_mapper.cpp::getOccupancyGrid and remapping_configurator.cpp).
+     * to the same footprint as the base-session scans, and so the
+     * start_remapping service handler can resolve pixel-coord polygons
+     * against the loaded grid's offset/resolution/height.
      * @param rScans
      * @param resolution
      * @param rWidth

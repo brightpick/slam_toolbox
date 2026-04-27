@@ -44,6 +44,16 @@ constexpr int kBaseSessionId = 0;
 class SessionState
 {
 public:
+  // Construct an empty state — no session history, no active remapping.
+  SessionState() = default;
+
+  // Construct a state populated with history loaded from disk (typically
+  // from a `.labels` sidecar after deserializing a `.posegraph`).  No
+  // remapping is active; subsequent registerNode() calls land in the
+  // base session until setRemapping() is invoked.
+  SessionState(NodeSessionMap node_session_ids,
+               SessionPolygonMap session_polygons);
+
   // ---- Mutators ----
 
   // Tag the node with the currently-active session.  Tags as kBaseSessionId
@@ -58,14 +68,6 @@ public:
   // registerNode() calls tag new scans with it; the polygon is also
   // recorded in session_polygons so it is serialized to .labels on save.
   bool setRemapping(Polygon polygon);
-
-  // Replace both maps in one shot (used after deserialization).  If a
-  // remapping was configured earlier (via setRemapping) its session id is
-  // re-picked as max(loaded session_id)+1 and its polygon re-registered
-  // under the new id — so the caller never sees a session-id collision
-  // with the just-loaded history.
-  void setAll(const NodeSessionMap& node_session_ids,
-              const SessionPolygonMap& session_polygons);
 
   // Build the ownership image from session_polygons + current remapping
   // polygon.  The image sizes itself to the polygon union bbox;

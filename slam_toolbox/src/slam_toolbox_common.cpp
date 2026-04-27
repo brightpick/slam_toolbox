@@ -175,8 +175,6 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
 
   smapper_->configure(private_nh);
   private_nh.setParam("paused_new_measurements", false);
-
-  remapping_configurator_.loadFromRosParams(private_nh, *smapper_);
 }
 
 /*****************************************************************************/
@@ -193,6 +191,7 @@ void SlamToolbox::setROSInterfaces(ros::NodeHandle& node)
   ssSerialize_ = node.advertiseService("serialize_map", &SlamToolbox::serializePoseGraphCallback, this);
   ssDesserialize_ = node.advertiseService("deserialize_map", &SlamToolbox::deserializePoseGraphCallback, this);
   ssReset_ = node.advertiseService("reset", &SlamToolbox::resetCallback, this);
+  ssStartRemapping_ = node.advertiseService("start_remapping", &SlamToolbox::startRemappingCallback, this);
   scan_filter_sub_ = std::make_unique<message_filters::Subscriber<sensor_msgs::LaserScan> >(node, scan_topic_, 5);
   scan_filter_ = std::make_unique<tf2_ros::MessageFilter<sensor_msgs::LaserScan> >(*scan_filter_sub_, *tf_, odom_frame_, 5, node);
   scan_filter_->registerCallback(boost::bind(&SlamToolbox::laserCallback, this, _1));
@@ -828,16 +827,14 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
-  // setAll absorbs the loaded history AND re-picks the current remapping's
-  // session id if remapping was already configured (world-units path).  The
-  // pixels path calls setRemapping() afterwards via resolvePendingPolygon(),
-  // which is naturally collision-free because the history is already in.
-  smapper_->sessionState().setAll(node_session_ids, session_polygons);
+  // Replace the session state with the freshly-loaded history.  Predicates
+  // were wired at startup with [this] capture into smapper_->sessionState();
+  // move-assignment keeps the same address, so the captures stay valid.
+  smapper_->sessionState() = SessionState{
+    std::move(node_session_ids), std::move(session_polygons)};
 
-  remapping_configurator_.resolvePendingPolygon(*smapper_, resolution_);
-
-  // Run the post-load optimisation now that labels AND remapping config are
-  // in place — the fixed-node predicate depends on both.  Pulled out of
+  // Run the post-load optimisation now that labels are in place — the
+  // fixed-node predicate depends on them.  Pulled out of
   // loadSerializedPoseGraph so old-session nodes stay pinned here.
   solver_->Compute();
 
@@ -889,6 +886,65 @@ bool SlamToolbox::resetCallback(
   }
 
   resp.result = true;
+  return true;
+}
+
+/*****************************************************************************/
+bool SlamToolbox::startRemappingCallback(
+  slam_toolbox_msgs::StartRemapping::Request  &req,
+  slam_toolbox_msgs::StartRemapping::Response &resp)
+/*****************************************************************************/
+{
+  using Req = slam_toolbox_msgs::StartRemapping::Request;
+  using Resp = slam_toolbox_msgs::StartRemapping::Response;
+
+  boost::mutex::scoped_lock lock(smapper_mutex_);
+
+  // Remapping always operates on an existing map.  Reject the call when no
+  // scans are loaded yet — for both unit modes — so the caller gets an
+  // immediate, explicit error rather than a silently-accepted polygon
+  // applied to nothing.
+  kt_int32s width, height;
+  karto::Vector2<kt_double> offset;
+  karto::OccupancyGrid::ComputeDimensions(
+    smapper_->getMapper()->GetAllProcessedScans(),
+    resolution_, width, height, offset);
+  if (width <= 0 || height <= 0)
+  {
+    resp.result = Resp::RESULT_NO_MAP;
+    resp.message = "no map loaded yet — load a posegraph before starting remapping";
+    return true;
+  }
+
+  Polygon polygon;
+  polygon.reserve(req.polygon.points.size());
+  for (const auto& p : req.polygon.points)
+  {
+    polygon.emplace_back(p.x, p.y);
+  }
+
+  switch (req.units)
+  {
+    case Req::UNITS_PIXELS:
+      polygon = polygon_units::pixelToWorld(polygon, offset, resolution_, height);
+      break;
+    case Req::UNITS_WORLD:
+      break;
+    default:
+      resp.result = Resp::RESULT_INVALID_UNITS;
+      resp.message = "units must be UNITS_PIXELS (0) or UNITS_WORLD (1)";
+      return true;
+  }
+
+  if (!smapper_->sessionState().setRemapping(std::move(polygon)))
+  {
+    resp.result = Resp::RESULT_INVALID_POLYGON;
+    resp.message = "polygon must have >= 3 vertices and not self-intersect";
+    return true;
+  }
+
+  resp.result = Resp::RESULT_SUCCESS;
+  resp.message = "remapping session started";
   return true;
 }
 

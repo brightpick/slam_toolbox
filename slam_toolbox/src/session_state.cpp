@@ -11,6 +11,13 @@
 namespace slam_toolbox
 {
 
+SessionState::SessionState(NodeSessionMap node_session_ids,
+                           SessionPolygonMap session_polygons)
+  : node_session_ids_(std::move(node_session_ids)),
+    session_polygons_(std::move(session_polygons))
+{
+}
+
 // ---- Mutators ----
 
 void SessionState::registerNode(int node_id)
@@ -36,20 +43,6 @@ bool SessionState::setRemapping(Polygon polygon)
            "(%zu-vertex polygon).", current_session_id_, polygon.size());
   remapping_polygon_ = std::move(polygon);
   return true;
-}
-
-void SessionState::setAll(const NodeSessionMap& node_session_ids,
-                          const SessionPolygonMap& session_polygons)
-{
-  node_session_ids_ = node_session_ids;
-  session_polygons_ = session_polygons;
-
-  // If remapping was configured before loading, re-pick its session id to
-  // avoid collision with the just-loaded history and re-register its
-  // polygon under the new id.  No-op when no remapping is active.
-  if (!remapping_polygon_) return;
-  current_session_id_ = computeNextSessionId();
-  session_polygons_[current_session_id_] = *remapping_polygon_;
 }
 
 void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,

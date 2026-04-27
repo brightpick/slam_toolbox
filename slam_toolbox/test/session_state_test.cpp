@@ -79,37 +79,31 @@ TEST(SessionStateTest, SetRemappingRejectsInvalidPolygon)
   EXPECT_FALSE(s.getRemappingPolygon().has_value());
 }
 
-TEST(SessionStateTest, SetAllReplacesBothMaps)
+TEST(SessionStateTest, ConstructFromLoadedHistory)
 {
-  SessionState s;
-  s.registerNode(1);  // pre-existing entry — should be dropped
-
-  NodeSessionMap new_nodes{{100, 7}};
-  SessionPolygonMap new_polys;
-  s.setAll(new_nodes, new_polys);
+  NodeSessionMap loaded_nodes{{100, 7}};
+  SessionPolygonMap loaded_polys{{7, triangle()}};
+  SessionState s{loaded_nodes, loaded_polys};
 
   const auto& nodes = s.getAllNodeSessionIds();
   EXPECT_EQ(nodes.size(), 1u);
   EXPECT_EQ(nodes.at(100), 7);
-  EXPECT_EQ(nodes.count(1), 0u);
+
+  EXPECT_EQ(s.getAllSessionPolygons().size(), 1u);
 }
 
-TEST(SessionStateTest, SetAllAfterSetRemappingAvoidsSessionIdCollision)
+TEST(SessionStateTest, SetRemappingAfterLoadAvoidsSessionIdCollision)
 {
-  // Configure remapping first, then load history that already uses session
-  // ids 1 and 2.  setAll must re-pick the remapping session to avoid
-  // colliding with loaded history.
-  SessionState s;
-  ASSERT_TRUE(s.setRemapping(triangle()));
-
+  // Production flow: deserialize completes (loads history with session ids
+  // 1 and 2), then user calls start_remapping — setRemapping must pick a
+  // fresh id that doesn't collide with the loaded history.
   NodeSessionMap loaded_nodes{{101, 1}, {102, 2}};
   SessionPolygonMap loaded_polys{
     {1, triangle()},
     {2, triangle()}};
-  s.setAll(loaded_nodes, loaded_polys);
+  SessionState s{loaded_nodes, loaded_polys};
 
-  // Register a fresh node — it should land in a session that is none of the
-  // historical ones.
+  ASSERT_TRUE(s.setRemapping(triangle()));
   s.registerNode(200);
   const auto& nodes = s.getAllNodeSessionIds();
   const int new_sid = nodes.at(200);
