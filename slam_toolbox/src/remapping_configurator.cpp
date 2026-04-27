@@ -56,10 +56,8 @@ bool readPolygonParam(XmlRpc::XmlRpcValue& xml, Polygon& out)
 
 }  // namespace
 
-void RemappingConfigurator::loadFromRosParams(
-  ros::NodeHandle& nh,
-  mapper_utils::SMapper& smapper,
-  karto::LoopClosureCandidateSelector* selector)
+void RemappingConfigurator::loadFromRosParams(ros::NodeHandle& nh,
+                                              mapper_utils::SMapper& smapper)
 {
   XmlRpc::XmlRpcValue xml_poly;
   if (!nh.getParam("remapping_polygon", xml_poly)) return;
@@ -72,13 +70,7 @@ void RemappingConfigurator::loadFromRosParams(
 
   if (units == "world")
   {
-    if (smapper.sessionState().setRemapping(polygon))
-    {
-      ROS_INFO("RemappingConfigurator: remapping configured (world) — "
-               "session_id=%d (auto), %zu-vertex polygon.",
-               smapper.sessionState().currentSessionId(), polygon.size());
-      installLoopClosureFilter(selector, smapper);
-    }
+    smapper.sessionState().setRemapping(polygon);
   }
   else if (units == "pixels")
   {
@@ -96,9 +88,7 @@ void RemappingConfigurator::loadFromRosParams(
 }
 
 void RemappingConfigurator::resolvePendingPolygon(
-  mapper_utils::SMapper& smapper,
-  double resolution,
-  karto::LoopClosureCandidateSelector* selector)
+  mapper_utils::SMapper& smapper, double resolution)
 {
   if (!pending_pixel_polygon_) return;
 
@@ -128,41 +118,12 @@ void RemappingConfigurator::resolvePendingPolygon(
       const double wy = offset.GetY() + (height - 1 - v.GetY()) * resolution;
       world_poly.emplace_back(wx, wy);
     }
-    if (smapper.sessionState().setRemapping(world_poly))
-    {
-      ROS_INFO("RemappingConfigurator: remapping resolved from pixels — "
-               "session_id=%d (auto), %zu-vertex polygon (grid %dx%d, "
-               "offset [%.3f, %.3f], resolution %.3f)",
-               smapper.sessionState().currentSessionId(),
-               world_poly.size(),
-               width, height, offset.GetX(), offset.GetY(), resolution);
-      installLoopClosureFilter(selector, smapper);
-    }
+    ROS_INFO("RemappingConfigurator: pixel polygon resolved on grid "
+             "%dx%d (offset [%.3f, %.3f], resolution %.3f).",
+             width, height, offset.GetX(), offset.GetY(), resolution);
+    smapper.sessionState().setRemapping(world_poly);
   }
   pending_pixel_polygon_.reset();
-}
-
-void installFixedPosePredicate(mapper_utils::SMapper& smapper)
-{
-  smapper.getMapper()->SetPoseFixedPredicate(
-    [&smapper](int id) {
-      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
-    });
-}
-
-void installLoopClosureFilter(karto::LoopClosureCandidateSelector* selector,
-                              mapper_utils::SMapper& smapper)
-{
-  if (!selector) return;
-
-  selector->setCandidateFilter(
-    [&smapper](karto::LocalizedRangeScan* pScan) -> bool
-    {
-      const int scan_sid = smapper.sessionState().getSessionId(pScan->GetUniqueId());
-      const int owner = smapper.sessionState().ownerAtWorld(
-        pScan->GetCorrectedPose().GetPosition());
-      return scan_sid != owner;
-    });
 }
 
 }  // namespace slam_toolbox

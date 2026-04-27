@@ -11,52 +11,11 @@
 namespace slam_toolbox
 {
 
-// ---- Session ids ----
+// ---- Mutators ----
 
 void SessionState::registerNode(int node_id)
 {
   node_session_ids_[node_id] = current_session_id_;
-}
-
-void SessionState::tagNode(int node_id, int session_id)
-{
-  node_session_ids_[node_id] = session_id;
-}
-
-int SessionState::getSessionId(int node_id) const
-{
-  auto it = node_session_ids_.find(node_id);
-  return it != node_session_ids_.end() ? it->second : kBaseSessionId;
-}
-
-void SessionState::setAll(const NodeSessionMap& node_session_ids,
-                          const SessionPolygonMap& session_polygons)
-{
-  node_session_ids_ = node_session_ids;
-  session_polygons_ = session_polygons;
-
-  // If remapping was configured before loading, re-pick its session id to
-  // avoid collision with the just-loaded history and re-register its
-  // polygon under the new id.  No-op when no remapping is active.
-  if (!remapping_polygon_) return;
-  current_session_id_ = computeNextSessionId();
-  session_polygons_[current_session_id_] = *remapping_polygon_;
-}
-
-// ---- Remapping config ----
-
-int SessionState::computeNextSessionId() const
-{
-  int max_sid = 0;
-  for (const auto& [node_id, session_id] : node_session_ids_)
-  {
-    max_sid = std::max(max_sid, session_id);
-  }
-  for (const auto& [session_id, polygon] : session_polygons_)
-  {
-    max_sid = std::max(max_sid, session_id);
-  }
-  return max_sid + 1;
 }
 
 bool SessionState::setRemapping(Polygon polygon)
@@ -73,17 +32,25 @@ bool SessionState::setRemapping(Polygon polygon)
   // it is serialized to .labels on save.
   current_session_id_ = computeNextSessionId();
   session_polygons_[current_session_id_] = polygon;
+  ROS_INFO("SessionState: remapping session %d configured "
+           "(%zu-vertex polygon).", current_session_id_, polygon.size());
   remapping_polygon_ = std::move(polygon);
   return true;
 }
 
-bool SessionState::isRemappingNode(int node_id) const
+void SessionState::setAll(const NodeSessionMap& node_session_ids,
+                          const SessionPolygonMap& session_polygons)
 {
-  if (!remapping_polygon_) return false;
-  return getSessionId(node_id) == current_session_id_;
-}
+  node_session_ids_ = node_session_ids;
+  session_polygons_ = session_polygons;
 
-// ---- Ownership image ----
+  // If remapping was configured before loading, re-pick its session id to
+  // avoid collision with the just-loaded history and re-register its
+  // polygon under the new id.  No-op when no remapping is active.
+  if (!remapping_polygon_) return;
+  current_session_id_ = computeNextSessionId();
+  session_polygons_[current_session_id_] = *remapping_polygon_;
+}
 
 void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                                        kt_double resolution)
@@ -95,14 +62,58 @@ void SessionState::buildOwnershipImage(const karto::Vector2<kt_double>& target_o
                          *remapping_polygon_);
 }
 
-int SessionState::ownerAt(const karto::Vector2<kt_int32s>& cell) const
+// ---- Predicate factories ----
+
+std::function<bool(int)> SessionState::makeFixedPosePredicate() const
 {
-  return ownership_image_.sessionAt(cell);
+  return [this](int id) {
+    return remapping_polygon_.has_value() &&
+           getSessionId(id) != current_session_id_;
+  };
 }
 
-int SessionState::ownerAtWorld(const karto::Vector2<kt_double>& world_pos) const
+std::function<bool(karto::LocalizedRangeScan*)>
+SessionState::makeLoopClosureFilter() const
 {
-  return ownership_image_.sessionAtWorld(world_pos);
+  return [this](karto::LocalizedRangeScan* pScan) -> bool {
+    const int scan_sid = getSessionId(pScan->GetUniqueId());
+    const int owner = ownership_image_.sessionAtWorld(
+      pScan->GetCorrectedPose().GetPosition());
+    return scan_sid != owner;
+  };
+}
+
+std::function<bool(karto::LocalizedRangeScan*,
+                   const karto::Vector2<kt_int32s>&)>
+SessionState::makeGridCellPredicate() const
+{
+  return [this](karto::LocalizedRangeScan* pScan,
+                const karto::Vector2<kt_int32s>& cell) -> bool {
+    return ownership_image_.sessionAt(cell) ==
+           getSessionId(pScan->GetUniqueId());
+  };
+}
+
+// ---- Internals ----
+
+int SessionState::computeNextSessionId() const
+{
+  int max_sid = 0;
+  for (const auto& [node_id, session_id] : node_session_ids_)
+  {
+    max_sid = std::max(max_sid, session_id);
+  }
+  for (const auto& [session_id, polygon] : session_polygons_)
+  {
+    max_sid = std::max(max_sid, session_id);
+  }
+  return max_sid + 1;
+}
+
+int SessionState::getSessionId(int node_id) const
+{
+  auto it = node_session_ids_.find(node_id);
+  return it != node_session_ids_.end() ? it->second : kBaseSessionId;
 }
 
 }  // namespace slam_toolbox

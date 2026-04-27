@@ -98,11 +98,14 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   auto* e02 = makeEdge(v0, v2, karto::Pose2(0.0, 0.0, 0.0), karto::Pose2(2.0, 0.0, 0.0));
 
   // --- Set up SMapper: session 0 = pinned, session 1 = free ---
-  // Order matters.  SMapper auto-assigns current_session_id = max(label) + 1:
-  //  1) register nodes 0 and 1 first — they inherit the default label (session 0).
-  //  2) call setRemapping(polygon) — computes current_session_id = 1 and updates
-  //     the current session label so node 2 (registered next) is tagged session 1.
-  // Polygon is arbitrary — ceres pinning only consults isRemappingNode.
+  // Order matters.  SMapper auto-assigns the current session as
+  // max(label) + 1:
+  //   1) register nodes 0 and 1 first — they inherit the default label
+  //      (base session).
+  //   2) call setRemapping(polygon) — flips the current session.
+  //   3) register node 2 next — tagged with the new session.
+  // Polygon is arbitrary; the predicate only cares which session a node
+  // belongs to.
   mapper_utils::SMapper smapper;
   smapper.sessionState().registerNode(0);
   smapper.sessionState().registerNode(1);
@@ -110,16 +113,12 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
   std::vector<karto::Vector2<kt_double>> polygon{
     {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
   ASSERT_TRUE(smapper.sessionState().setRemapping(polygon));
-  ASSERT_EQ(smapper.sessionState().currentSessionId(), 1);
 
   smapper.sessionState().registerNode(2);
 
   // --- Set up solver ---
   solver_plugins::CeresSolver solver;
-  solver.setNodeFixedPredicate(
-    [&smapper](int id) {
-      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
-    });
+  solver.setNodeFixedPredicate(smapper.sessionState().makeFixedPosePredicate());
 
   // AddNode order: node 0 first so it becomes first_node_
   solver.AddNode(v0);
@@ -199,10 +198,7 @@ TEST(CeresSolverFixedPoseTest, NoRemappingConfigOnlyPinsFirstNode)
   // setRemapping intentionally not called — default session label is session 0
 
   solver_plugins::CeresSolver solver;
-  solver.setNodeFixedPredicate(
-    [&smapper](int id) {
-      return smapper.sessionState().getRemappingPolygon().has_value() && !smapper.sessionState().isRemappingNode(id);
-    });
+  solver.setNodeFixedPredicate(smapper.sessionState().makeFixedPosePredicate());
 
   solver.AddNode(v0);
   solver.AddNode(v1);

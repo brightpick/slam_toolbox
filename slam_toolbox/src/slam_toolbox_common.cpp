@@ -106,6 +106,8 @@ void SlamToolbox::setCandidateSelector(ros::NodeHandle& private_nh)
     }
   }
   smapper_->setCandidateSelector(candidate_selector_.get());
+  candidate_selector_->setCandidateFilter(
+    smapper_->sessionState().makeLoopClosureFilter());
 }
 
 /*****************************************************************************/
@@ -132,7 +134,8 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
 
-  installFixedPosePredicate(*smapper_);
+  smapper_->getMapper()->SetPoseFixedPredicate(
+    smapper_->sessionState().makeFixedPosePredicate());
 }
 
 /*****************************************************************************/
@@ -173,8 +176,7 @@ void SlamToolbox::setParams(ros::NodeHandle& private_nh)
   smapper_->configure(private_nh);
   private_nh.setParam("paused_new_measurements", false);
 
-  remapping_configurator_.loadFromRosParams(
-    private_nh, *smapper_, candidate_selector_.get());
+  remapping_configurator_.loadFromRosParams(private_nh, *smapper_);
 }
 
 /*****************************************************************************/
@@ -832,16 +834,12 @@ bool SlamToolbox::deserializePoseGraphCallback(
   // which is naturally collision-free because the history is already in.
   smapper_->sessionState().setAll(node_session_ids, session_polygons);
 
-  remapping_configurator_.resolvePendingPolygon(
-    *smapper_, resolution_, candidate_selector_.get());
+  remapping_configurator_.resolvePendingPolygon(*smapper_, resolution_);
 
   // Run the post-load optimisation now that labels AND remapping config are
   // in place — the fixed-node predicate depends on both.  Pulled out of
   // loadSerializedPoseGraph so old-session nodes stay pinned here.
   solver_->Compute();
-
-  // Labels are now loaded, so the filter has enough context to run.
-  installLoopClosureFilter(candidate_selector_.get(), *smapper_);
 
   updateMap();
 

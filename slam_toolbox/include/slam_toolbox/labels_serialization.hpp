@@ -17,8 +17,7 @@
  * session, and labels just record which session each pose belongs to.
  * kBaseSessionId is the implicit default — it never appears in `sessions`,
  * and its labels are omitted from `labels`.  Any pose id absent from the
- * file is treated as kBaseSessionId; SessionState::getSessionId() already
- * returns kBaseSessionId for unknown nodes.
+ * file is treated as kBaseSessionId.
  */
 
 #ifndef SLAM_TOOLBOX_LABELS_SERIALIZATION_H_

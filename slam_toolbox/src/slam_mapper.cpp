@@ -20,6 +20,9 @@
 
 #include "slam_toolbox/slam_mapper.hpp"
 
+#include <algorithm>
+#include <iterator>
+
 namespace mapper_utils
 {
 
@@ -82,16 +85,16 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   // would shift its origin (sub-pixel), which ripples into Bresenham
   // differences on every cell and makes the diff outside the polygon look
   // noisy even though the filter is working.
-  const int current_session_id = session_.currentSessionId();
+  //
+  // The base-session set is exactly the set of nodes that get pinned during
+  // optimisation — reuse that predicate.
+  auto isBaseNode = session_.makeFixedPosePredicate();
   karto::LocalizedRangeScanVector base_scans;
   base_scans.reserve(scans.size());
-  for (auto* s : scans)
-  {
-    if (session_.getSessionId(s->GetUniqueId()) != current_session_id)
-    {
-      base_scans.push_back(s);
-    }
-  }
+  std::copy_if(scans.begin(), scans.end(), std::back_inserter(base_scans),
+    [&isBaseNode](karto::LocalizedRangeScan* s) {
+      return isBaseNode(s->GetUniqueId());
+    });
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
   karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
@@ -103,12 +106,7 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   // on the full scan vector, which would re-grow the footprint and shift the
   // origin sub-pixel.
   auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
-  result->CreateFromScans(
-    scans,
-    [this](karto::LocalizedRangeScan* pScan, const karto::Vector2<kt_int32s>& pt)
-    {
-      return session_.ownerAt(pt) == session_.getSessionId(pScan->GetUniqueId());
-    });
+  result->CreateFromScans(scans, session_.makeGridCellPredicate());
   return result;
 }
 

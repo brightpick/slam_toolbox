@@ -32,6 +32,7 @@
 
 #include "karto_sdk/Karto.h"
 #include "karto_sdk/Mapper.h"
+#include "slam_toolbox/ownership_image.hpp"
 #include "slam_toolbox/polygon_fill.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
@@ -575,42 +576,45 @@ protected:
     mgr_->RegisterSensor(karto::Name(kLaser));
   }
 
-  // Add three scans at (ox, oy, heading) with the given session and register
-  // each scan's post-AddScan UniqueId with the label system.
+  // Add three scans at (ox, oy, heading) and register each scan with the
+  // session state — they inherit whichever session is currently active
+  // (kBaseSessionId before enableRemapping(), the new remap session id
+  // after).  This mirrors production: scans get tagged when registered.
   //
   // MapperSensorManager::AddScan overwrites pScan->UniqueId with its own
   // monotonic counter, so any id set pre-AddScan is irrelevant.  We read
   // GetUniqueId() after AddScan and register the label under that.
-  void addScans(double ox, double oy, double range, int session_id,
-                double heading = 0.0)
+  void addScans(double ox, double oy, double range, double heading = 0.0)
   {
     for (int i = 0; i < 3; ++i)
     {
       auto* scan = makeScan(/*id=*/0, ox, oy, range, kLaser, heading);
       mgr_->AddScan(scan);
-      smapper_.sessionState().tagNode(scan->GetUniqueId(), session_id);
+      smapper_.sessionState().registerNode(scan->GetUniqueId());
       scans_.push_back(scan);
     }
   }
 
-  // Helper: configure remapping with the shared rectangular polygon.
-  // Adds two far-apart anchor scans in session 0 to define the grid bounds;
-  // setRemapping() then auto-assigns current_session_id = 1 (max of {0} + 1).
+  // Far-apart base-session anchor scans defining the grid bounds.
   //
   // Rationale: SMapper::getOccupancyGrid sizes the target grid from BASE-
   // SESSION scans only (by design — remap output must slot into the old PGM
   // pixel-for-pixel).  The anchor pair at (-5, -5) and (15, 15) extends the
   // base bbox to cover every assertion point in Suite B without firing rays
-  // through the assertion region.  All test scans labelled session 1 must be
-  // added AFTER setRemapping — the production flow is: load history →
-  // setRemapping → new scans inherit the computed current session.
-  void setRemapping()
+  // through the assertion region.  Must be called before enableRemapping()
+  // so the anchors stay in the base session.
+  void addAnchorScans()
   {
-    addScans(-5.0, -5.0, 0.1, /*session_id=*/0);
-    addScans(15.0, 15.0, 0.1, /*session_id=*/0);
+    addScans(-5.0, -5.0, 0.1);
+    addScans(15.0, 15.0, 0.1);
+  }
+
+  // Configure remapping with the shared rectangular polygon.  Subsequent
+  // addScans() calls will tag their scans with the new session.
+  void enableRemapping()
+  {
     ASSERT_TRUE(smapper_.sessionState().setRemapping(
       makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
-    ASSERT_EQ(smapper_.sessionState().currentSessionId(), 1);
   }
 
   void TearDown() override
@@ -631,20 +635,22 @@ protected:
 // in the unfiltered CreateFromScans path (which has no boundary padding).
 TEST_F(RemapBboxSMapperTest, NoRemappingConfigured_UnfilteredPath)
 {
-  addScans(3.5, 0.0, 3.5, /*session_id=*/0, /*heading=*/M_PI);
-  // setRemapping not called
+  addScans(3.5, 0.0, 3.5, /*heading=*/M_PI);
+  // enableRemapping not called
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 0.0, 0.0), karto::GridStates_Occupied);
 }
 
-// Current remap session (session_id == current_session_id): endpoint inside bbox → Occupied.
+// Current remap session: endpoint inside bbox → Occupied.
 TEST_F(RemapBboxSMapperTest, RemappingSession_EndpointInsideBox_IsOccupied)
 {
-  setRemapping();
-  // session_id=1 matches the auto-computed current session; central endpoint (3.5, 0) inside bbox
-  addScans(0.0, 0.0, 3.5, /*session_id=*/1);
+  addAnchorScans();
+  enableRemapping();
+  // Scan added after enableRemapping — tagged as the current remap session;
+  // central endpoint (3.5, 0) inside bbox.
+  addScans(0.0, 0.0, 3.5);
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
@@ -654,21 +660,24 @@ TEST_F(RemapBboxSMapperTest, RemappingSession_EndpointInsideBox_IsOccupied)
 // Current remap session: endpoint outside bbox → Unknown (ownership mismatch blocks write).
 TEST_F(RemapBboxSMapperTest, RemappingSession_EndpointOutsideBox_IsUnknown)
 {
-  setRemapping();
-  // session_id=1 matches the current session; central endpoint (8, 0) outside bbox
-  addScans(0.0, 0.0, 8.0, /*session_id=*/1);
+  addAnchorScans();
+  enableRemapping();
+  // Scan tagged as current remap session; central endpoint (8, 0) outside bbox.
+  addScans(0.0, 0.0, 8.0);
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
   EXPECT_EQ(cellAt(grid.get(), 8.0, 0.0), karto::GridStates_Unknown);
 }
 
-// Base session (session_id=0 ≠ current_session_id): endpoint outside bbox → Occupied.
+// Base session: endpoint outside bbox → Occupied.
 TEST_F(RemapBboxSMapperTest, FixedSession_EndpointOutsideBox_IsOccupied)
 {
-  setRemapping();
-  // session_id=0 owns everything outside the remap bbox; central endpoint (8, 0) outside
-  addScans(0.0, 0.0, 8.0, /*session_id=*/0);
+  addAnchorScans();
+  // Base scan added BEFORE enableRemapping — owns everything outside the
+  // remap bbox; central endpoint (8, 0) outside.
+  addScans(0.0, 0.0, 8.0);
+  enableRemapping();
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
@@ -678,9 +687,11 @@ TEST_F(RemapBboxSMapperTest, FixedSession_EndpointOutsideBox_IsOccupied)
 // Base session: endpoint inside bbox → Unknown (ownership mismatch blocks write).
 TEST_F(RemapBboxSMapperTest, FixedSession_EndpointInsideBox_IsUnknown)
 {
-  setRemapping();
-  // session_id=0 cannot claim cells inside the remap bbox; central endpoint (3.5, 0) inside
-  addScans(0.0, 0.0, 3.5, /*session_id=*/0);
+  addAnchorScans();
+  // Base scan added BEFORE enableRemapping — cannot claim cells inside the
+  // remap bbox; central endpoint (3.5, 0) inside.
+  addScans(0.0, 0.0, 3.5);
+  enableRemapping();
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
@@ -700,15 +711,16 @@ TEST_F(RemapBboxSMapperTest, FixedSession_EndpointInsideBox_IsUnknown)
 //   - Cell (4, 0.5) inside bbox but on no ray is Unknown (no cross-contamination)
 TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
 {
-  setRemapping();
-  addScans(0.0, 2.5, 8.0, /*session_id=*/0); // base, above bbox
-  addScans(3.0, 0.0, 1.5, /*session_id=*/1); // remap, inside bbox
+  addAnchorScans();
+  addScans(0.0, 2.5, 8.0); // base, above bbox — added BEFORE enableRemapping
+  enableRemapping();
+  addScans(3.0, 0.0, 1.5); // remap, inside bbox — added AFTER enableRemapping
 
   auto grid = std::unique_ptr<karto::OccupancyGrid>(smapper_.getOccupancyGrid(kResolution));
   ASSERT_NE(grid, nullptr);
 
-  EXPECT_EQ(cellAt(grid.get(), 8.0, 2.5), karto::GridStates_Occupied); // session 0 drew outside bbox
-  EXPECT_EQ(cellAt(grid.get(), 4.5, 0.0), karto::GridStates_Occupied); // session 1 drew inside bbox
+  EXPECT_EQ(cellAt(grid.get(), 8.0, 2.5), karto::GridStates_Occupied); // base drew outside bbox
+  EXPECT_EQ(cellAt(grid.get(), 4.5, 0.0), karto::GridStates_Occupied); // remap drew inside bbox
   EXPECT_EQ(cellAt(grid.get(), 4.0, 0.5), karto::GridStates_Unknown);  // inside bbox, no ray here
 }
 
@@ -716,47 +728,36 @@ TEST_F(RemapBboxSMapperTest, TwoSessions_IndependentRegions_NoOverlap)
 // ═════════════════════════════════════════════════════════════════════════════
 // Suite C — ownership image layering order
 //
-// buildOwnershipImage paints session 0 everywhere, then each historical
-// session's polygon in ascending session_id order (std::map ordering),
-// then the current remapping polygon last.  Higher-id sessions must
-// therefore overwrite lower-id sessions in overlapping cells, and the
-// current session must overwrite every historical session in cells it
-// claims.  OwnershipImage::sessionAtWorld is queried directly — no scans are
-// needed because the ownership image is built purely from polygons.
+// OwnershipImage::build paints session 0 everywhere, then each historical
+// session's polygon in ascending session_id order (std::map ordering), then
+// the current remapping polygon last.  Higher-id sessions must therefore
+// overwrite lower-id sessions in overlapping cells, and the current session
+// must overwrite every historical session in cells it claims.  Tested
+// directly against OwnershipImage — no SessionState wrapper.
 // ═════════════════════════════════════════════════════════════════════════════
 
 TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
 {
-  mapper_utils::SMapper smapper;
-
   auto rect = [](double x1, double y1, double x2, double y2) {
     return std::vector<karto::Vector2<kt_double>>{
       {x1, y1}, {x2, y1}, {x2, y2}, {x1, y2}};
   };
 
-  // Configure the current remapping polygon first — node_labels_ is empty
-  // at this point, so setRemapping assigns current_session_id = 1.
-  ASSERT_TRUE(smapper.sessionState().setRemapping(rect(3.0, 0.0, 5.0, 4.0)));
-
-  // Inject historical sessions with two overlapping polygons.  setAll
-  // re-picks current_session_id now that the session history is visible —
-  // should land on max(existing) + 1 = 3.
-  slam_toolbox::NodeSessionMap node_sessions{
-    {101, 1}, {102, 2}};
-  slam_toolbox::SessionPolygonMap session_polygons{
+  std::unordered_map<int, std::vector<karto::Vector2<kt_double>>> session_polygons{
     {1, rect(0.0, 0.0, 4.0, 4.0)},
     {2, rect(2.0, 0.0, 6.0, 4.0)}};
-  smapper.sessionState().setAll(node_sessions, session_polygons);
-  ASSERT_EQ(smapper.sessionState().currentSessionId(), 3);
+  const int currentSessionId = 3;
+  const auto currentPolygon = rect(3.0, 0.0, 5.0, 4.0);
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to
   // the polygon union bbox.  Queries outside the image fall back to
-  // session 0 via ownerAtWorld's bounds check.
-  smapper.sessionState().buildOwnershipImage(
-    karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0);
+  // session 0 via sessionAtWorld's bounds check.
+  slam_toolbox::OwnershipImage image;
+  image.build(karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0,
+              session_polygons, currentSessionId, currentPolygon);
 
   auto owner = [&](double x, double y) {
-    return smapper.sessionState().ownerAtWorld(karto::Vector2<kt_double>(x, y));
+    return image.sessionAtWorld(karto::Vector2<kt_double>(x, y));
   };
 
   // Query points land on specific grid cells.  Karto's WorldToGrid rounds

@@ -15,6 +15,7 @@
 #ifndef SLAM_TOOLBOX_SESSION_STATE_H_
 #define SLAM_TOOLBOX_SESSION_STATE_H_
 
+#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -37,35 +38,26 @@ using SessionPolygonMap = std::unordered_map<int, Polygon>;
 // compatibility: pre-remapping .posegraph files have no .labels sidecar, so
 // every node implicitly belongs to session 0.  New remapping sessions are
 // numbered starting at 1 and carry their own polygon.  Nodes missing from
-// node_session_ids are treated as session 0 by getSessionId().
+// node_session_ids are treated as session 0.
 constexpr int kBaseSessionId = 0;
 
 class SessionState
 {
 public:
-  // ---- Session ids ----
+  // ---- Mutators ----
 
-  // Tag the node with the current session id.  The current session id is
-  // managed exclusively by setRemapping() / reconcileRemapping().
+  // Tag the node with the currently-active session.  Tags as kBaseSessionId
+  // before any setRemapping(), and as the active remap session afterwards.
   void registerNode(int node_id);
 
-  // Associate `node_id` with a specific `session_id`, bypassing the current
-  // session id.  Useful when labelling a batch of scans after the fact (e.g.
-  // test setups that need base-session scans alongside remap scans without
-  // toggling the active remapping).
-  void tagNode(int node_id, int session_id);
-
-  // Id of the session new scans are currently tagged with — equal to the
-  // remapping session id while remapping is active, kBaseSessionId on a
-  // fresh start.
-  int currentSessionId() const { return current_session_id_; }
-
-  // Session id for `node_id`, or kBaseSessionId if unknown — new scans on a
-  // fresh map and nodes from no-labels .posegraph files both land here.
-  int getSessionId(int node_id) const;
-
-  const NodeSessionMap& getAllNodeSessionIds() const { return node_session_ids_; }
-  const SessionPolygonMap& getAllSessionPolygons() const { return session_polygons_; }
+  // Configure remapping with a simple polygon (edges must not cross
+  // themselves; non-convex shapes are allowed).  Returns false and leaves
+  // remapping unchanged if the polygon has < 3 vertices or self-intersects.
+  // On success an INFO log line is emitted with the new session id; the
+  // session id itself is an internal detail and not exposed.  Subsequent
+  // registerNode() calls tag new scans with it; the polygon is also
+  // recorded in session_polygons so it is serialized to .labels on save.
+  bool setRemapping(Polygon polygon);
 
   // Replace both maps in one shot (used after deserialization).  If a
   // remapping was configured earlier (via setRemapping) its session id is
@@ -75,44 +67,50 @@ public:
   void setAll(const NodeSessionMap& node_session_ids,
               const SessionPolygonMap& session_polygons);
 
-  // ---- Remapping config ----
+  // Build the ownership image from session_polygons + current remapping
+  // polygon.  The image sizes itself to the polygon union bbox;
+  // `target_offset` anchors its origin so target-grid cell indices remain
+  // valid in it.  No-op when no remapping is active.
+  void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
+                           kt_double resolution);
 
-  // Configure remapping with a simple polygon (edges must not cross
-  // themselves; non-convex shapes are allowed).  Returns false and leaves
-  // remapping unchanged if the polygon has < 3 vertices or self-intersects.
-  // The session id is assigned automatically as max(existing session_id)+1
-  // and exposed via currentSessionId(); subsequent registerNode() calls tag
-  // new scans with it.  The polygon is also recorded in session_polygons so
-  // it is serialized to .labels on save.
-  bool setRemapping(Polygon polygon);
+  // ---- Observers ----
 
   // Active remapping polygon, if one is configured.
   const std::optional<Polygon>& getRemappingPolygon() const { return remapping_polygon_; }
 
-  // Returns true if the node belongs to the current remapping session.
-  bool isRemappingNode(int node_id) const;
+  // Per-node session ids and per-session polygons.  Read by the labels
+  // serialization path.
+  const NodeSessionMap& getAllNodeSessionIds() const { return node_session_ids_; }
+  const SessionPolygonMap& getAllSessionPolygons() const { return session_polygons_; }
 
-  // ---- Ownership image ----
+  // ---- Predicate factories ----
 
-  // Build the ownership image from session_polygons + current remapping
-  // polygon.  The image sizes itself to the polygon union bbox; `target_offset`
-  // anchors its origin so target-grid cell indices remain valid in it.
-  // No-op when no remapping is active.
-  void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
-                           kt_double resolution);
+  // True when the node should be held fixed during pose-graph optimisation
+  // (i.e. it does not belong to the active remapping session).  Always
+  // false when no remapping is configured.  Captures *this by reference;
+  // SessionState must outlive the returned callable.
+  std::function<bool(int)> makeFixedPosePredicate() const;
 
-  // Session owning the cell at grid index `cell`.  Returns kBaseSessionId if
-  // no image is built or the cell is out of bounds — unpainted periphery
-  // implicitly belongs to the base session.  `cell` must be in the same
-  // coordinate system used for buildOwnershipImage's target_offset.
-  int ownerAt(const karto::Vector2<kt_int32s>& cell) const;
+  // True when a loop-closure candidate should be dropped (its recorded
+  // session no longer owns the cell at its current corrected pose).
+  // Captures *this by reference; SessionState must outlive the returned
+  // callable.
+  std::function<bool(karto::LocalizedRangeScan*)> makeLoopClosureFilter() const;
 
-  // Same as ownerAt() but takes a world-space position and converts to grid
-  // coords using the offset/resolution passed to buildOwnershipImage.
-  int ownerAtWorld(const karto::Vector2<kt_double>& world_pos) const;
+  // True when an occupancy-grid cell should be written by the given scan
+  // during ray-tracing — i.e. when the scan and the cell agree on which
+  // session owns the cell.  Caller must call buildOwnershipImage() with
+  // the target grid's offset/resolution before using the returned
+  // predicate.  Captures *this by reference; SessionState must outlive
+  // the returned callable.
+  std::function<bool(karto::LocalizedRangeScan*,
+                     const karto::Vector2<kt_int32s>&)>
+  makeGridCellPredicate() const;
 
 private:
   int computeNextSessionId() const;
+  int getSessionId(int node_id) const;
 
   NodeSessionMap node_session_ids_;
   SessionPolygonMap session_polygons_;
