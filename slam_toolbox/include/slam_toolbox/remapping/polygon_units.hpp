@@ -19,7 +19,7 @@
 
 #include <karto_sdk/Karto.h>
 
-#include "slam_toolbox/remapping_state.hpp"
+#include "slam_toolbox/remapping/remapping_state.hpp"
 
 namespace slam_toolbox
 {

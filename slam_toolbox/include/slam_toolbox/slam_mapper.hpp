@@ -23,7 +23,7 @@
 #include "karto_sdk/Mapper.h"
 #include "karto_sdk/Karto.h"
 #include "tf2/utils.h"
-#include "slam_toolbox/remapping_state.hpp"
+#include "slam_toolbox/remapping/remapping_state.hpp"
 
 namespace mapper_utils
 {
@@ -52,7 +52,7 @@ public:
   void clearLocalizationBuffer();
 
   // Session labels, remapping config, and the ownership image — see
-  // slam_toolbox/remapping_state.hpp.
+  // slam_toolbox/remapping/remapping_state.hpp.
   slam_toolbox::RemappingState& remappingState() { return remapping_state_; }
   const slam_toolbox::RemappingState& remappingState() const { return remapping_state_; }
 

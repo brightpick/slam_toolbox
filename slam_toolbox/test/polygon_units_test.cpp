@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "slam_toolbox/polygon_units.hpp"
+#include "slam_toolbox/remapping/polygon_units.hpp"
 
 using slam_toolbox::Polygon;
 using slam_toolbox::polygon_units::pixelToWorld;

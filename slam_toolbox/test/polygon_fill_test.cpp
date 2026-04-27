@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <vector>
 
-#include "slam_toolbox/polygon_fill.hpp"
+#include "slam_toolbox/remapping/polygon_fill.hpp"
 
 using slam_toolbox::polygon_fill::fillSimplePolygon;
 using slam_toolbox::polygon_fill::isSimplePolygon;

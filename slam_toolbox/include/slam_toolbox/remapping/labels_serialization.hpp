@@ -31,8 +31,8 @@
 #include <ros/ros.h>
 #include <yaml-cpp/yaml.h>
 
-#include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/remapping_state.hpp"
+#include "slam_toolbox/remapping/polygon_fill.hpp"
+#include "slam_toolbox/remapping/remapping_state.hpp"
 
 namespace slam_toolbox
 {

@@ -2,7 +2,7 @@
  * Copyright (c) 2026, Brightpick
  */
 
-#include "slam_toolbox/polygon_units.hpp"
+#include "slam_toolbox/remapping/polygon_units.hpp"
 
 namespace slam_toolbox
 {

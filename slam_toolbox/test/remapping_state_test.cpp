@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 
-#include "slam_toolbox/remapping_state.hpp"
+#include "slam_toolbox/remapping/remapping_state.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
 using slam_toolbox::NodeSessionMap;

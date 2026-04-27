@@ -24,7 +24,7 @@
 #include <karto_sdk/Karto.h>
 #include <karto_sdk/Mapper.h>
 #include <sys/stat.h>
-#include "slam_toolbox/labels_serialization.hpp"
+#include "slam_toolbox/remapping/labels_serialization.hpp"
 
 namespace serialization
 {

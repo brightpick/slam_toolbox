@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "slam_toolbox/labels_serialization.hpp"
+#include "slam_toolbox/remapping/labels_serialization.hpp"
 
 namespace
 {

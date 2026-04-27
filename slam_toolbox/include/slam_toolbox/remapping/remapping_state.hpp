@@ -23,7 +23,7 @@
 
 #include <karto_sdk/Karto.h>
 
-#include "slam_toolbox/ownership_image.hpp"
+#include "slam_toolbox/remapping/ownership_image.hpp"
 
 namespace slam_toolbox
 {

@@ -32,8 +32,8 @@
 
 #include "karto_sdk/Karto.h"
 #include "karto_sdk/Mapper.h"
-#include "slam_toolbox/ownership_image.hpp"
-#include "slam_toolbox/polygon_fill.hpp"
+#include "slam_toolbox/remapping/ownership_image.hpp"
+#include "slam_toolbox/remapping/polygon_fill.hpp"
 #include "slam_toolbox/slam_mapper.hpp"
 
 namespace

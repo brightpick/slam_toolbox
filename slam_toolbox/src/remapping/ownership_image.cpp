@@ -2,9 +2,9 @@
  * Copyright (c) 2026, Brightpick
  */
 
-#include "slam_toolbox/ownership_image.hpp"
-#include "slam_toolbox/polygon_fill.hpp"
-#include "slam_toolbox/remapping_state.hpp"
+#include "slam_toolbox/remapping/ownership_image.hpp"
+#include "slam_toolbox/remapping/polygon_fill.hpp"
+#include "slam_toolbox/remapping/remapping_state.hpp"
 
 #include <algorithm>
 #include <cmath>
