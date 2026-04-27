@@ -67,6 +67,17 @@ void OwnershipImage::build(
   // fillSimplePolygon paints up to `floor(max_grid_coord)`,
   // so the required width is `floor(max_grid_coord) + 1`.  Cells outside
   // the resulting image are implicitly session 0 — see sessionAt().
+  //
+  // NOTE: cells at NEGATIVE grid coords (i.e. polygon vertices below
+  // target_offset) are clipped — they fall outside this width/height
+  // sizing and read as kBaseSessionId via sessionAt's bounds check.  By
+  // design this matches buildRemapGrid's footprint-locking: the rendered
+  // OccupancyGrid is itself sized to base_scans starting at target_offset
+  // so it has no negative-index cells either, and any polygon claim below
+  // target_offset would not be drawn into anyway.  If the ownership image
+  // is ever consumed by a grid that does NOT share target_offset, this
+  // assumption breaks and the build needs to be reworked to take a
+  // separate own-origin offset.
   const kt_int32s width = std::max<kt_int32s>(
     0, static_cast<kt_int32s>(
          std::floor((bbox.max_x - target_offset.GetX()) / resolution)) + 1);

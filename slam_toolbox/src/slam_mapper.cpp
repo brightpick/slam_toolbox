@@ -87,14 +87,24 @@ karto::OccupancyGrid* SMapper::buildRemapGrid(
   // noisy even though the filter is working.
   //
   // The base-session set is exactly the set of nodes that get pinned during
-  // optimisation — reuse that predicate.
+  // optimisation — reuse that predicate.  Karto's own grid-building path
+  // tolerates null entries in the scan vector (see CreateFromScans /
+  // ComputeDimensions in Karto.h), so guard with `s &&` here too.
   auto isBaseNode = remapping_state_.makeFixedPosePredicate();
   karto::LocalizedRangeScanVector base_scans;
   base_scans.reserve(scans.size());
   std::copy_if(scans.begin(), scans.end(), std::back_inserter(base_scans),
     [&isBaseNode](karto::LocalizedRangeScan* s) {
-      return isBaseNode(s->GetUniqueId());
+      return s && isBaseNode(s->GetUniqueId());
     });
+
+  // No base-session scans means we have nothing to anchor the grid footprint
+  // to.  In the current flow this can't happen (the start_remapping service
+  // rejects when no scans are loaded, and after the first setRemapping every
+  // pre-existing scan is a base scan), but ComputeDimensions on an empty
+  // vector leaves width/height undefined — guard explicitly.
+  if (base_scans.empty()) return nullptr;
+
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
   karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);

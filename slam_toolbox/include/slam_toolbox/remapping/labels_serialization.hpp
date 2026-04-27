@@ -92,55 +92,67 @@ inline bool loadLabels(const std::string& filename,
   {
     YAML::Node root = YAML::LoadFile(filename);
 
-    for (const auto& session : root["sessions"])
+    // Guard against the top-level keys being present-but-not-a-sequence
+    // (e.g. an empty `sessions:` parses as a null scalar).  Iterating a
+    // non-sequence throws YAML::InvalidNode, which would drop the whole
+    // otherwise-valid file via the outer catch.
+    const YAML::Node sessions_node = root["sessions"];
+    if (sessions_node.IsDefined() && sessions_node.IsSequence())
     {
-      const int sid = session["id"].as<int>();
-
-      const auto& poly = session["polygon"];
-      if (!poly || !poly.IsSequence())
+      for (const auto& session : sessions_node)
       {
-        ROS_ERROR("loadLabels: session %d has no polygon — skipped.", sid);
-        continue;
-      }
+        const int sid = session["id"].as<int>();
 
-      Polygon polygon;
-      bool malformed = false;
-      for (const auto& vertex : poly)
-      {
-        if (!vertex.IsSequence() || vertex.size() != 2)
+        const auto& poly = session["polygon"];
+        if (!poly || !poly.IsSequence())
         {
-          ROS_ERROR("loadLabels: session %d has a malformed vertex "
-                    "— session skipped.", sid);
-          malformed = true;
-          break;
+          ROS_ERROR("loadLabels: session %d has no polygon — skipped.", sid);
+          continue;
         }
-        polygon.emplace_back(vertex[0].as<double>(), vertex[1].as<double>());
-      }
-      if (malformed) continue;
 
-      if (polygon.size() < 3)
-      {
-        ROS_ERROR("loadLabels: session %d polygon has %zu "
-                  "vertex(es) — at least 3 required, session skipped.",
-                  sid, polygon.size());
-        continue;
-      }
+        Polygon polygon;
+        bool malformed = false;
+        for (const auto& vertex : poly)
+        {
+          if (!vertex.IsSequence() || vertex.size() != 2)
+          {
+            ROS_ERROR("loadLabels: session %d has a malformed vertex "
+                      "— session skipped.", sid);
+            malformed = true;
+            break;
+          }
+          polygon.emplace_back(vertex[0].as<double>(), vertex[1].as<double>());
+        }
+        if (malformed) continue;
 
-      if (!isSimplePolygon(polygon))
-      {
-        ROS_ERROR("loadLabels: session %d polygon is "
-                  "self-intersecting — session skipped.", sid);
-        continue;
-      }
+        if (polygon.size() < 3)
+        {
+          ROS_ERROR("loadLabels: session %d polygon has %zu "
+                    "vertex(es) — at least 3 required, session skipped.",
+                    sid, polygon.size());
+          continue;
+        }
 
-      session_polygons[sid] = std::move(polygon);
+        if (!isSimplePolygon(polygon))
+        {
+          ROS_ERROR("loadLabels: session %d polygon is "
+                    "self-intersecting — session skipped.", sid);
+          continue;
+        }
+
+        session_polygons[sid] = std::move(polygon);
+      }
     }
 
-    for (const auto& entry : root["labels"])
+    const YAML::Node labels_node = root["labels"];
+    if (labels_node.IsDefined() && labels_node.IsSequence())
     {
-      const int pose_id = entry["id"].as<int>();
-      const int session_id = entry["session_id"].as<int>();
-      node_session_ids[pose_id] = session_id;
+      for (const auto& entry : labels_node)
+      {
+        const int pose_id = entry["id"].as<int>();
+        const int session_id = entry["session_id"].as<int>();
+        node_session_ids[pose_id] = session_id;
+      }
     }
   }
   catch (const YAML::Exception& e)
