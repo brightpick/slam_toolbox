@@ -206,13 +206,55 @@ void LoopClosureAssistant::publishGraph()
       vis_utils::toEdgeMarker(map_frame_, "slam_toolbox", 0.05);
 
     const EdgeList& edges = graph->GetEdges();
+
+    // collect all covariance values, then use percentile-based range to avoid
+    // outliers compressing the color scale
+    std::vector<double> cov_values;
+    cov_values.reserve(edges.size());
+    for (auto * edge : edges)
+    {
+      karto::LinkInfo * link = dynamic_cast<karto::LinkInfo*>(edge->GetLabel());
+      if (link)
+      {
+        const karto::Matrix3& cov = link->GetCovariance();
+        cov_values.push_back(cov(0, 0) + cov(1, 1));
+      }
+    }
+
+    double cov_min_seen = 1e-5;
+    double cov_max_seen = 1e-2;
+    if (cov_values.size() >= 20)
+    {
+      std::vector<double> sorted = cov_values;
+      std::sort(sorted.begin(), sorted.end());
+      cov_min_seen = sorted[sorted.size() * 5 / 100];   // 5th percentile
+      cov_max_seen = sorted[sorted.size() * 95 / 100];  // 95th percentile
+    }
+    ROS_INFO("Edge covariance (XY trace) p5/p95: [%.2e, %.2e]  (n=%zu)",
+             cov_min_seen, cov_max_seen, cov_values.size());
+
     for (ConstEdgeListIterator it = edges.begin(); it != edges.end(); ++it)
     {
-      const karto::Edge<karto::LocalizedRangeScan> * edge = *it;
+      karto::Edge<karto::LocalizedRangeScan> * edge = *it;
       karto::LocalizedRangeScan * source_scan = edge->GetSource()->GetObject();
       karto::LocalizedRangeScan * target_scan = edge->GetTarget()->GetObject();
       const karto::Pose2 source_pose = source_scan->GetCorrectedPose();
       const karto::Pose2 target_pose = target_scan->GetCorrectedPose();
+
+      karto::LinkInfo * link = dynamic_cast<karto::LinkInfo*>(edge->GetLabel());
+      if (link)
+      {
+        const karto::Matrix3& cov = link->GetCovariance();
+        const double cov_xy = cov(0, 0) + cov(1, 1);
+        edge_marker.color = vis_utils::covarianceToColor(cov_xy, cov_min_seen, cov_max_seen);
+      }
+      else
+      {
+        edge_marker.color.r = 0.0;
+        edge_marker.color.g = 0.0;
+        edge_marker.color.b = 1.0;
+        edge_marker.color.a = 1.0;
+      }
 
       edge_marker.id = marker_array_.markers.size();
       edge_marker.points[0].x = source_pose.GetX();

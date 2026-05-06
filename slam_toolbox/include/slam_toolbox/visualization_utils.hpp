@@ -19,6 +19,9 @@
 #ifndef SLAM_TOOLBOX_VISUALIZATION_UTILS_H_
 #define SLAM_TOOLBOX_VISUALIZATION_UTILS_H_
 
+#include <algorithm>
+#include <cmath>
+
 namespace vis_utils
 {
 
@@ -73,6 +76,37 @@ inline visualization_msgs::Marker toEdgeMarker(
   marker.lifetime = ros::Duration(0.);
 
   return marker;
+}
+
+// Maps positional covariance (m²) to a color: red = strong (low cov), blue = weak (high cov).
+// Uses log10 scale over [cov_min, cov_max] with a red→yellow→blue gradient.
+inline std_msgs::ColorRGBA covarianceToColor(
+  double cov_xy,
+  double cov_min = 1e-6,
+  double cov_max = 1e-1)
+{
+  const double log_min = std::log10(cov_min);
+  const double log_max = std::log10(cov_max);
+  const double cov_clamped = std::max(cov_min, std::min(cov_max, cov_xy));
+  const double t = (std::log10(cov_clamped) - log_min) / (log_max - log_min);  // 0=strong, 1=weak
+
+  std_msgs::ColorRGBA color;
+  color.a = 1.0;
+  if (t < 0.5)
+  {
+    // red → yellow
+    color.r = 1.0;
+    color.g = 2.0 * t;
+    color.b = 0.0;
+  }
+  else
+  {
+    // yellow → blue
+    color.r = 2.0 * (1.0 - t);
+    color.g = 2.0 * (1.0 - t);
+    color.b = 2.0 * t - 1.0;
+  }
+  return color;
 }
 
 inline visualization_msgs::InteractiveMarker toInteractiveMarker(
