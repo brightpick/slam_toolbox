@@ -51,7 +51,7 @@ namespace karto
 
       // Skip candidates that no longer own their position (superseded by a
       // later remapping session).
-      if (candidate_filter_ && candidate_filter_(pCandidateScan))
+      if (shouldSkipCandidate(pCandidateScan))
       {
         chain.clear();
         continue;

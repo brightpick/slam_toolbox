@@ -203,6 +203,12 @@ void CeresSolver::Compute()
   {
     for (auto& [id, vec] : *nodes_)
     {
+      // A node may live in nodes_ before any constraint references it
+      // (AddNode inserts here; parameter blocks are registered later via
+      // AddConstraint → AddResidualBlock).  Calling SetParameterBlock* on
+      // a missing block CHECK-fails inside Ceres, so skip such nodes —
+      // they'll be visited on the next Compute once a constraint lands.
+      if (!problem_->HasParameterBlock(&vec(0))) continue;
       const bool isFirstNode =
         (first_node_ != nodes_->end() && id == first_node_->first);
       if (is_node_fixed_(id) || isFirstNode)

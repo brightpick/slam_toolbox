@@ -66,6 +66,27 @@ public:
   slam_toolbox::RemappingState& remappingState() { return remapping_state_; }
   const slam_toolbox::RemappingState& remappingState() const { return remapping_state_; }
 
+  // Rebuild the ownership image from current scans + the currently-active
+  // remapping polygon, using the base-session footprint as the anchor so its
+  // origin matches the grid produced by getOccupancyGrid().  Call this right
+  // after activating a remapping session — otherwise the loop-closure filter
+  // sees a null image (sessionAtWorld returns kBaseSessionId for every query)
+  // until the next map publish runs buildRemapGrid, which silently drops
+  // every current-session scan as a candidate.  No-op when no remapping is
+  // active or when no base-session scans exist.
+  void rebuildOwnershipImage(double resolution);
+
+  // Width/height/offset of the occupancy grid that buildRemapGrid would
+  // render at this resolution — i.e. the base-session footprint.  Use this
+  // (not ComputeDimensions over all scans) to convert pixel coords from a
+  // published map into world coords: the published PGM is rendered against
+  // this frame, and on subsequent remap cycles the all-scans bbox can drift
+  // (newer-session scans may extend the bbox), which would shift the
+  // origin.  Returns false when no base-session scans are present.
+  bool getBaseFootprint(double resolution,
+                        kt_int32s& width, kt_int32s& height,
+                        karto::Vector2<kt_double>& offset) const;
+
 protected:
   std::unique_ptr<karto::Mapper> mapper_;
 
@@ -75,6 +96,14 @@ private:
   // by getOccupancyGrid when a remapping polygon is active.
   karto::OccupancyGrid* buildRemapGrid(
     const karto::LocalizedRangeScanVector& scans, double resolution);
+
+  // Filter scans to the base session and compute their occupancy-grid
+  // footprint (ComputeDimensions).  Returns false when no base scans are
+  // present, in which case width/height/offset are not set.
+  bool computeBaseFootprint(
+    const karto::LocalizedRangeScanVector& scans, double resolution,
+    kt_int32s& width, kt_int32s& height,
+    karto::Vector2<kt_double>& offset) const;
 
   slam_toolbox::RemappingState remapping_state_;
 };

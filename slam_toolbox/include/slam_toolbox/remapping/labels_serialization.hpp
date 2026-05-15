@@ -77,6 +77,17 @@ inline void saveLabels(const std::string& filename,
 
   std::ofstream fout(filename);
   fout << root;
+  if (!fout.good())
+  {
+    // Silent failure here would clobber session bookkeeping: the next
+    // loadLabels sees a missing/empty file and treats every pose as base
+    // session.  We can't propagate the failure (caller is void; the
+    // SerializePoseGraph service response carries no success field) — at
+    // least surface it in the log.
+    ROS_ERROR("saveLabels: failed to write %s — session labels lost; "
+              "next load will treat all poses as base session.",
+              filename.c_str());
+  }
 }
 
 inline bool loadLabels(const std::string& filename,

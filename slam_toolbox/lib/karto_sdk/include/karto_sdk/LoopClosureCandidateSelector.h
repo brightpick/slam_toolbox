@@ -69,6 +69,17 @@ namespace karto
     }
 
   protected:
+    /**
+     * True when a candidate scan should be skipped according to the
+     * filter set via setCandidateFilter().  Safe to call when no filter
+     * has been set (returns false).
+     */
+    bool shouldSkipCandidate(LocalizedRangeScan* pScan) const
+    {
+      return candidate_filter_ && candidate_filter_(pScan);
+    }
+
+  private:
     std::function<bool(LocalizedRangeScan*)> candidate_filter_;
   };
 

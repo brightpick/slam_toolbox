@@ -888,15 +888,16 @@ bool SlamToolbox::startRemappingCallback(
   boost::mutex::scoped_lock lock(smapper_mutex_);
 
   // Remapping always operates on an existing map.  Reject the call when no
-  // scans are loaded yet — for both unit modes — so the caller gets an
-  // immediate, explicit error rather than a silently-accepted polygon
-  // applied to nothing.
+  // base-session scans are loaded yet — for both unit modes — so the caller
+  // gets an immediate, explicit error rather than a silently-accepted
+  // polygon applied to nothing.  Use the base-session footprint (not all
+  // scans) so the pixel→world conversion below uses the same frame as the
+  // PGM that buildRemapGrid publishes; on subsequent remap cycles, newer-
+  // session scans can extend the all-scans bbox and shift its origin
+  // relative to the rendered PGM.
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
-  karto::OccupancyGrid::ComputeDimensions(
-    smapper_->getMapper()->GetAllProcessedScans(),
-    resolution_, width, height, offset);
-  if (width <= 0 || height <= 0)
+  if (!smapper_->getBaseFootprint(resolution_, width, height, offset))
   {
     resp.result = Resp::RESULT_NO_MAP;
     resp.message = "no map loaded yet — load a posegraph before starting remapping";
@@ -929,6 +930,12 @@ bool SlamToolbox::startRemappingCallback(
     resp.message = "polygon must have >= 3 vertices and not self-intersect";
     return true;
   }
+
+  // Build the ownership image now, before the first map publish.  Without
+  // this, the loop-closure filter sees a null image (sessionAtWorld returns
+  // kBaseSessionId everywhere) and silently drops every current-session scan
+  // as a candidate until buildRemapGrid runs.
+  smapper_->rebuildOwnershipImage(resolution_);
 
   resp.result = Resp::RESULT_SUCCESS;
   resp.message = "remapping session started";
