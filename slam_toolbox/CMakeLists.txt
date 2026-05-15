@@ -10,8 +10,22 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -std=c++17")
 # Add googletest before karto_sdk so catkin's gtest.cmake (loaded by karto_sdk's
 # find_package(catkin)) finds targets already defined in this project's scope,
 # ensuring make rules land in slam_toolbox's Makefile2 rather than nowhere.
+# Also publish the GTEST_FROM_SOURCE_* / GMOCK_FROM_SOURCE_* cache variables so
+# catkin's gtest.cmake populates GTEST_LIBRARIES / GMOCK_LIBRARIES; without these
+# it shortcuts on the existing targets and leaves GTEST_LIBRARIES empty, which
+# trips catkin_add_gtest's assert.
 if(NOT TARGET gmock)
   add_subdirectory(/usr/src/googletest ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
+  set(GTEST_FROM_SOURCE_FOUND TRUE CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_INCLUDE_DIRS /usr/src/googletest/googletest/include CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_LIBRARY_DIRS ${CMAKE_CURRENT_BINARY_DIR}/gtest_build/lib CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_LIBRARIES gtest CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_MAIN_LIBRARIES gtest_main CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_FOUND TRUE CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_INCLUDE_DIRS /usr/src/googletest/googlemock/include CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_LIBRARY_DIRS ${CMAKE_CURRENT_BINARY_DIR}/gtest_build/lib CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_LIBRARIES gmock CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_MAIN_LIBRARIES gmock_main CACHE INTERNAL "")
 endif()
 
 #karto_sdk lib
