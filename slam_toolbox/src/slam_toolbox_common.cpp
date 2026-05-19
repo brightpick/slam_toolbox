@@ -106,6 +106,8 @@ void SlamToolbox::setCandidateSelector(ros::NodeHandle& private_nh)
     }
   }
   smapper_->setCandidateSelector(candidate_selector_.get());
+  candidate_selector_->setCandidateFilter(
+    smapper_->remappingState().makeLoopClosureFilter());
 }
 
 /*****************************************************************************/
@@ -131,6 +133,9 @@ void SlamToolbox::setSolver(ros::NodeHandle& private_nh_)
     exit(1);
   }
   smapper_->getMapper()->SetScanSolver(solver_.get());
+
+  smapper_->getMapper()->SetPoseFixedPredicate(
+    smapper_->remappingState().makeFixedPosePredicate());
 }
 
 /*****************************************************************************/
@@ -186,6 +191,7 @@ void SlamToolbox::setROSInterfaces(ros::NodeHandle& node)
   ssSerialize_ = node.advertiseService("serialize_map", &SlamToolbox::serializePoseGraphCallback, this);
   ssDesserialize_ = node.advertiseService("deserialize_map", &SlamToolbox::deserializePoseGraphCallback, this);
   ssReset_ = node.advertiseService("reset", &SlamToolbox::resetCallback, this);
+  ssStartRemapping_ = node.advertiseService("start_remapping", &SlamToolbox::startRemappingCallback, this);
   scan_filter_sub_ = std::make_unique<message_filters::Subscriber<sensor_msgs::LaserScan> >(node, scan_topic_, 5);
   scan_filter_ = std::make_unique<tf2_ros::MessageFilter<sensor_msgs::LaserScan> >(*scan_filter_sub_, *tf_, odom_frame_, 5, node);
   scan_filter_->registerCallback(boost::bind(&SlamToolbox::laserCallback, this, _1));
@@ -561,6 +567,7 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
       scan_holder_->addScan(*scan);
     }
 
+    smapper_->remappingState().registerNode(range_scan->GetUniqueId());
     setTransformFromPoses(range_scan->GetCorrectedPose(), karto_pose,
       scan->header.stamp, update_reprocessing_transform);
     dataset_->Add(range_scan);
@@ -657,7 +664,9 @@ bool SlamToolbox::serializePoseGraphCallback(
   }
 
   boost::mutex::scoped_lock lock(smapper_mutex_);
-  serialization::write(filename, *smapper_->getMapper(), *dataset_);
+  serialization::write(filename, *smapper_->getMapper(), *dataset_,
+    smapper_->remappingState().getAllNodeSessionIds(),
+    smapper_->remappingState().getAllSessionPolygons());
   return true;
 }
 
@@ -702,6 +711,12 @@ void SlamToolbox::loadSerializedPoseGraph(
   smapper_->setMapper(mapper.release());
   smapper_->configure(nh_);
   dataset_.reset(dataset.release());
+
+  // The mapper object was just replaced. Any selector holding a raw Mapper*
+  // must update its pointer, and the selector must be re-registered on the
+  // new mapper's graph so it is not null when loop closure runs.
+  candidate_selector_->setMapper(smapper_->getMapper());
+  smapper_->setCandidateSelector(candidate_selector_.get());
 
   closure_assistant_->setMapper(smapper_->getMapper());
 
@@ -791,8 +806,11 @@ bool SlamToolbox::deserializePoseGraphCallback(
 
   std::unique_ptr<karto::Dataset> dataset = std::make_unique<karto::Dataset>();
   std::unique_ptr<karto::Mapper> mapper = std::make_unique<karto::Mapper>();
+  slam_toolbox::NodeSessionMap node_session_ids;
+  slam_toolbox::SessionPolygonMap session_polygons;
 
-  if (!serialization::read(filename, *mapper, *dataset))
+  if (!serialization::read(filename, *mapper, *dataset,
+                           node_session_ids, session_polygons))
   {
     ROS_ERROR("DeserializePoseGraph: Failed to read "
       "file: %s.", filename.c_str());
@@ -801,6 +819,12 @@ bool SlamToolbox::deserializePoseGraphCallback(
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
   loadSerializedPoseGraph(mapper, dataset);
+  // Replace the session state with the freshly-loaded history.  Predicates
+  // were wired at startup with [this] capture into smapper_->remappingState();
+  // move-assignment keeps the same address, so the captures stay valid.
+  smapper_->remappingState() = RemappingState{
+    std::move(node_session_ids), std::move(session_polygons)};
+
   updateMap();
 
   first_measurement_ = true;
@@ -849,6 +873,72 @@ bool SlamToolbox::resetCallback(
   }
 
   resp.result = true;
+  return true;
+}
+
+/*****************************************************************************/
+bool SlamToolbox::startRemappingCallback(
+  slam_toolbox_msgs::StartRemapping::Request  &req,
+  slam_toolbox_msgs::StartRemapping::Response &resp)
+/*****************************************************************************/
+{
+  using Req = slam_toolbox_msgs::StartRemapping::Request;
+  using Resp = slam_toolbox_msgs::StartRemapping::Response;
+
+  boost::mutex::scoped_lock lock(smapper_mutex_);
+
+  // Remapping always operates on an existing map.  Reject the call when no
+  // base-session scans are loaded yet — for both unit modes — so the caller
+  // gets an immediate, explicit error rather than a silently-accepted
+  // polygon applied to nothing.  Use the base-session footprint (not all
+  // scans) so the pixel→world conversion below uses the same frame as the
+  // PGM that buildRemapGrid publishes; on subsequent remap cycles, newer-
+  // session scans can extend the all-scans bbox and shift its origin
+  // relative to the rendered PGM.
+  kt_int32s width, height;
+  karto::Vector2<kt_double> offset;
+  if (!smapper_->getBaseFootprint(resolution_, width, height, offset))
+  {
+    resp.result = Resp::RESULT_NO_MAP;
+    resp.message = "no map loaded yet — load a posegraph before starting remapping";
+    return true;
+  }
+
+  Polygon polygon;
+  polygon.reserve(req.polygon.points.size());
+  for (const auto& p : req.polygon.points)
+  {
+    polygon.emplace_back(p.x, p.y);
+  }
+
+  switch (req.units)
+  {
+    case Req::UNITS_PIXELS:
+      polygon = pixelPolygonToWorld(polygon, offset, resolution_, height);
+      break;
+    case Req::UNITS_WORLD:
+      break;
+    default:
+      resp.result = Resp::RESULT_INVALID_UNITS;
+      resp.message = "units must be UNITS_PIXELS (0) or UNITS_WORLD (1)";
+      return true;
+  }
+
+  if (!smapper_->remappingState().setRemapping(std::move(polygon)))
+  {
+    resp.result = Resp::RESULT_INVALID_POLYGON;
+    resp.message = "polygon must have >= 3 vertices and not self-intersect";
+    return true;
+  }
+
+  // Build the ownership image now, before the first map publish.  Without
+  // this, the loop-closure filter sees a null image (sessionAtWorld returns
+  // kBaseSessionId everywhere) and silently drops every current-session scan
+  // as a candidate until buildRemapGrid runs.
+  smapper_->rebuildOwnershipImage(resolution_);
+
+  resp.result = Resp::RESULT_SUCCESS;
+  resp.message = "remapping session started";
   return true;
 }
 

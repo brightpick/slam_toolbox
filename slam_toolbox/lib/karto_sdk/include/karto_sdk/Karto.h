@@ -28,6 +28,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+#include <functional>
 #include <mutex>
 #include <shared_mutex>
 
@@ -4635,6 +4636,13 @@ namespace karto
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
 
+  // Default cell-inclusion predicate: accept every cell.  Used as the
+  // template default when callers don't supply a filter.
+  struct AlwaysAcceptCell
+  {
+    bool operator()(const Vector2<kt_int32s>&) const { return true; }
+  };
+
   /**
    * Defines a grid class
    */
@@ -4939,14 +4947,16 @@ namespace karto
 
     /**
      * Increments all the grid cells from (x0, y0) to (x1, y1);
-     * if applicable, apply f to each cell traced
-     * @param x0
-     * @param y0
-     * @param x1
-     * @param y1
-     * @param f
+     * if applicable, apply f to each cell traced.
+     *
+     * `cellPredicate(cell)` returns true when a cell should be written.
+     * The Bresenham stepping is always identical regardless of the
+     * predicate, preventing single-pixel divergence artefacts.
      */
-    void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1, Functor* f = NULL)
+    template <typename CellPred = AlwaysAcceptCell>
+    void TraceLine(kt_int32s x0, kt_int32s y0, kt_int32s x1, kt_int32s y1,
+                   Functor* f = NULL,
+                   const CellPred& cellPredicate = CellPred{})
     {
       kt_bool steep = abs(y1 - y0) > abs(x1 - x0);
       if (steep)
@@ -4999,6 +5009,8 @@ namespace karto
         }
 
         Vector2<kt_int32s> gridIndex(pointX, pointY);
+        if (!cellPredicate(gridIndex)) continue;
+
         if (IsValidGridIndex(gridIndex))
         {
           kt_int32s index = GridIndex(gridIndex, false);
@@ -6053,23 +6065,35 @@ namespace karto
     }
 
   public:
+    // Default scan-cell predicate: accept every (scan, cell) pair.
+    struct AlwaysAcceptScanCell
+    {
+      bool operator()(LocalizedRangeScan*, const Vector2<kt_int32s>&) const { return true; }
+    };
+
     /**
-     * Create an occupancy grid from the given scans using the given resolution
-     * @param rScans
-     * @param resolution
+     * Create an occupancy grid from the given scans.
+     *
+     * `scanCellPredicate(scan, cell)` returns true when that scan should
+     * write that cell — enables multi-session remapping without
+     * single-pixel artefacts.  Default accepts everything.
      */
-    static OccupancyGrid* CreateFromScans(const LocalizedRangeScanVector& rScans, kt_double resolution)
+    template <typename ScanCellPred = AlwaysAcceptScanCell>
+    static OccupancyGrid* CreateFromScans(
+        const LocalizedRangeScanVector& rScans,
+        kt_double resolution,
+        const ScanCellPred& scanCellPredicate = ScanCellPred{})
     {
       if (rScans.empty())
       {
-        return NULL;
+        return nullptr;
       }
 
       kt_int32s width, height;
       Vector2<kt_double> offset;
       ComputeDimensions(rScans, resolution, width, height, offset);
       OccupancyGrid* pOccupancyGrid = new OccupancyGrid(width, height, offset, resolution);
-      pOccupancyGrid->CreateFromScans(rScans);
+      pOccupancyGrid->CreateFromScans(rScans, scanCellPredicate);
 
       return pOccupancyGrid;
     }
@@ -6194,9 +6218,14 @@ namespace karto
       return m_pCellPassCnt;
     }
 
-  protected:
+  public:
     /**
-     * Calculate grid dimensions from localized range scans
+     * Calculate grid dimensions from localized range scans.
+     *
+     * Exposed publicly so the remapping path can size the ownership image
+     * to the same footprint as the base-session scans, and so the
+     * start_remapping service handler can resolve pixel-coord polygons
+     * against the loaded grid's offset/resolution/height.
      * @param rScans
      * @param resolution
      * @param rWidth
@@ -6230,10 +6259,16 @@ namespace karto
     }
 
     /**
-     * Create grid using scans
-     * @param rScans
+     * Create grid using scans.
+     *
+     * `scanCellPredicate(scan, cell)` returns true when that scan should
+     * write that cell.  Default accepts everything (no filtering).  Runs
+     * inline — no per-cell indirect dispatch.
      */
-    virtual void CreateFromScans(const LocalizedRangeScanVector& rScans)
+    template <typename ScanCellPred = AlwaysAcceptScanCell>
+    void CreateFromScans(
+        const LocalizedRangeScanVector& rScans,
+        const ScanCellPred& scanCellPredicate = ScanCellPred{})
     {
       m_pCellPassCnt->Resize(GetWidth(), GetHeight());
       m_pCellPassCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
@@ -6241,42 +6276,46 @@ namespace karto
       m_pCellHitsCnt->Resize(GetWidth(), GetHeight());
       m_pCellHitsCnt->GetCoordinateConverter()->SetOffset(GetCoordinateConverter()->GetOffset());
 
-      const_forEach(LocalizedRangeScanVector, &rScans)
+      for (LocalizedRangeScan* pScan : rScans)
       {
-        if (*iter == nullptr)
-        {
-          continue;
-        }
-
-        LocalizedRangeScan* pScan = *iter;
-        AddScan(pScan);
+        if (!pScan) continue;
+        AddScan(pScan, false,
+          [&scanCellPredicate, pScan](const Vector2<kt_int32s>& pt) {
+            return scanCellPredicate(pScan, pt);
+          });
       }
 
       Update();
     }
 
     /**
-     * Adds the scan's information to this grid's counters (optionally
-     * update the grid's cells' occupancy status)
-     * @param pScan
-     * @param doUpdate whether to update the grid's cell's occupancy status
-     * @return returns false if an endpoint fell off the grid, otherwise true
+     * Adds the scan's information to this grid's counters.
+     *
+     * `cellPredicate(cell)` returns true when a cell should be written.
+     * The Bresenham stepping is always identical regardless of the
+     * predicate, preventing single-pixel divergence artefacts.
+     *
+     * @param pScan          scan to process
+     * @param doUpdate       whether to immediately update occupancy values
+     * @param cellPredicate  optional cell-inclusion predicate
+     * @return false if any endpoint fell off the grid
      */
-    virtual kt_bool AddScan(LocalizedRangeScan* pScan, kt_bool doUpdate = false)
+    template <typename CellPred = AlwaysAcceptCell>
+    kt_bool AddScan(LocalizedRangeScan* pScan,
+                    kt_bool doUpdate = false,
+                    const CellPred& cellPredicate = CellPred{})
     {
       LaserRangeFinder* laserRangeFinder = pScan->GetLaserRangeFinder();
-      kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
-      kt_double maxRange = laserRangeFinder->GetMaximumRange();
-      kt_double minRange = laserRangeFinder->GetMinimumRange();
+      const kt_double rangeThreshold = laserRangeFinder->GetRangeThreshold();
+      const kt_double maxRange = laserRangeFinder->GetMaximumRange();
+      const kt_double minRange = laserRangeFinder->GetMinimumRange();
 
-      Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
-      // get scan point readings
+      const Vector2<kt_double> scanPosition = pScan->GetSensorPose().GetPosition();
       const PointVectorDouble& rPointReadings = pScan->GetPointReadings(false);
 
       kt_bool isAllInMap = true;
-
-      // draw lines from scan position to all point readings
       int pointIndex = 0;
+
       const_forEachAs(PointVectorDouble, &rPointReadings, pointsIter)
       {
         Vector2<kt_double> point = *pointsIter;
@@ -6285,13 +6324,11 @@ namespace karto
 
         if (rangeReading <= minRange || rangeReading >= maxRange || std::isnan(rangeReading))
         {
-          // ignore these readings
           pointIndex++;
           continue;
         }
         else if (rangeReading >= rangeThreshold)
         {
-          // trace up to range reading
           kt_double ratio = rangeThreshold / rangeReading;
           kt_double dx = point.GetX() - scanPosition.GetX();
           kt_double dy = point.GetY() - scanPosition.GetY();
@@ -6299,8 +6336,7 @@ namespace karto
           point.SetY(scanPosition.GetY() + ratio * dy);
         }
 
-        kt_bool isInMap = RayTrace(scanPosition, point, isEndPointValid, doUpdate);
-        if (!isInMap)
+        if (!RayTrace(scanPosition, point, isEndPointValid, doUpdate, cellPredicate))
         {
           isAllInMap = false;
         }
@@ -6314,16 +6350,25 @@ namespace karto
     /**
      * Traces a beam from the start position to the end position marking
      * the bookkeeping arrays accordingly.
+     *
+     * `cellPredicate(cell)` returns true when a cell should be written
+     * (applies to both traced cells and the endpoint hit).  The Bresenham
+     * stepping is always identical regardless of the predicate, preventing
+     * single-pixel divergence artefacts.
+     *
      * @param rWorldFrom start position of beam
      * @param rWorldTo end position of beam
      * @param isEndPointValid is the reading within the range threshold?
      * @param doUpdate whether to update the cells' occupancy status immediately
+     * @param cellPredicate optional cell-inclusion predicate
      * @return returns false if an endpoint fell off the grid, otherwise true
      */
-    virtual kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
-                             const Vector2<kt_double>& rWorldTo,
-                             kt_bool isEndPointValid,
-                             kt_bool doUpdate = false)
+    template <typename CellPred = AlwaysAcceptCell>
+    kt_bool RayTrace(const Vector2<kt_double>& rWorldFrom,
+                     const Vector2<kt_double>& rWorldTo,
+                     kt_bool isEndPointValid,
+                     kt_bool doUpdate = false,
+                     const CellPred& cellPredicate = CellPred{})
     {
       assert(m_pCellPassCnt != NULL && m_pCellHitsCnt != NULL);
 
@@ -6331,13 +6376,17 @@ namespace karto
       Vector2<kt_int32s> gridTo = m_pCellPassCnt->WorldToGrid(rWorldTo);
 
       CellUpdater* pCellUpdater = doUpdate ? m_pCellUpdater : NULL;
-      m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(), gridTo.GetX(), gridTo.GetY(), pCellUpdater);
+      m_pCellPassCnt->TraceLine(gridFrom.GetX(), gridFrom.GetY(),
+                                gridTo.GetX(), gridTo.GetY(),
+                                pCellUpdater, cellPredicate);
 
       // for the end point
       if (isEndPointValid)
       {
         if (m_pCellPassCnt->IsValidGridIndex(gridTo))
         {
+          if (!cellPredicate(gridTo)) return true;
+
           kt_int32s index = m_pCellPassCnt->GridIndex(gridTo, false);
 
           kt_int32u* pCellPassCntPtr = m_pCellPassCnt->GetDataPointer();

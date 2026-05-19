@@ -2060,7 +2060,7 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr)
+    m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2076,7 +2076,7 @@ namespace karto
     m_pMapperSensorManager(NULL),
     m_pGraph(NULL),
     m_pScanOptimizer(NULL),
-    m_pPendingCandidateSelector(nullptr)
+    m_pCurrentSelector(nullptr)
   {
     InitializeParameters();
   }
@@ -2637,10 +2637,9 @@ namespace karto
       m_pGraph = new MapperGraph(this, rangeThreshold);
     }
 
-    if (m_pPendingCandidateSelector)
+    if (m_pCurrentSelector)
     {
-      m_pGraph->SetCandidateSelector(m_pPendingCandidateSelector);
-      m_pPendingCandidateSelector = nullptr;
+      m_pGraph->SetCandidateSelector(m_pCurrentSelector);
     }
 
     m_Initialized = true;
@@ -3299,18 +3298,28 @@ namespace karto
   void Mapper::SetScanSolver(ScanSolver* pScanOptimizer)
   {
 	  m_pScanOptimizer = pScanOptimizer;
+	  if (m_pScanOptimizer && m_PoseFixedPredicate)
+	  {
+	    m_pScanOptimizer->setNodeFixedPredicate(m_PoseFixedPredicate);
+	  }
   }
 
   void Mapper::SetCandidateSelector(LoopClosureCandidateSelector* pSelector)
   {
+    m_pCurrentSelector = pSelector;
     if (m_pGraph)
     {
       m_pGraph->SetCandidateSelector(pSelector);
     }
-    else
+    // If graph doesn't exist yet, Initialize() will apply m_pCurrentSelector.
+  }
+
+  void Mapper::SetPoseFixedPredicate(std::function<bool(int)> fn)
+  {
+    m_PoseFixedPredicate = std::move(fn);
+    if (m_pScanOptimizer)
     {
-      // Graph not yet created (Initialize() not called yet); store for later.
-      m_pPendingCandidateSelector = pSelector;
+      m_pScanOptimizer->setNodeFixedPredicate(m_PoseFixedPredicate);
     }
   }
 

@@ -18,10 +18,13 @@
 #ifndef karto_sdk_LOOP_CLOSURE_CANDIDATE_SELECTOR_H
 #define karto_sdk_LOOP_CLOSURE_CANDIDATE_SELECTOR_H
 
+#include <functional>
 #include <karto_sdk/Karto.h>
 
 namespace karto
 {
+  class Mapper;
+
   /**
    * Abstract interface for loop closure candidate selection heuristics.
    * Implementations return a chain of candidate scans for one loop closure
@@ -46,6 +49,38 @@ namespace karto
       const LocalizedRangeScanMap& rAllScans,
       const LocalizedRangeScanVector& rNearLinkedScans,
       kt_int32u& rStartNum) = 0;
+
+    /**
+     * Called when the underlying Mapper object is replaced (e.g. after
+     * posegraph deserialization). Implementations that cache a Mapper pointer
+     * must override this to update their internal reference; the default
+     * no-op is safe for selectors that do not hold a Mapper pointer.
+     */
+    virtual void setMapper(const Mapper* /*pMapper*/) {}
+
+    /**
+     * Set an optional predicate that returns true when a candidate scan
+     * should be skipped (e.g. because it no longer owns its grid region
+     * after a more recent remapping session claimed the area).
+     */
+    void setCandidateFilter(std::function<bool(LocalizedRangeScan*)> fn)
+    {
+      candidate_filter_ = std::move(fn);
+    }
+
+  protected:
+    /**
+     * True when a candidate scan should be skipped according to the
+     * filter set via setCandidateFilter().  Safe to call when no filter
+     * has been set (returns false).
+     */
+    bool shouldSkipCandidate(LocalizedRangeScan* pScan) const
+    {
+      return candidate_filter_ && candidate_filter_(pScan);
+    }
+
+  private:
+    std::function<bool(LocalizedRangeScan*)> candidate_filter_;
   };
 
 }  // namespace karto

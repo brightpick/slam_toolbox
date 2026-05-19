@@ -191,6 +191,41 @@ void CeresSolver::Compute()
     was_constant_set_ = !was_constant_set_;
   }
 
+  // Pin or unpin every parameter block based on the current predicate
+  // verdict.  Symmetric on purpose: SetParameterBlockConstant is sticky
+  // across Solve() calls, so a node fixed in an earlier Compute would
+  // stay fixed if we only ever pinned.  Re-applying both directions each
+  // call makes Compute reflect the predicate's current state, even if a
+  // node's verdict flipped back to free.  first_node_ is always kept
+  // constant regardless — it's the gauge fix, owned by the
+  // was_constant_set_ mechanism above.
+  if (is_node_fixed_)
+  {
+    for (auto& [id, vec] : *nodes_)
+    {
+      // A node may live in nodes_ before any constraint references it
+      // (AddNode inserts here; parameter blocks are registered later via
+      // AddConstraint → AddResidualBlock).  Calling SetParameterBlock* on
+      // a missing block CHECK-fails inside Ceres, so skip such nodes —
+      // they'll be visited on the next Compute once a constraint lands.
+      if (!problem_->HasParameterBlock(&vec(0))) continue;
+      const bool isFirstNode =
+        (first_node_ != nodes_->end() && id == first_node_->first);
+      if (is_node_fixed_(id) || isFirstNode)
+      {
+        problem_->SetParameterBlockConstant(&vec(0));
+        problem_->SetParameterBlockConstant(&vec(1));
+        problem_->SetParameterBlockConstant(&vec(2));
+      }
+      else
+      {
+        problem_->SetParameterBlockVariable(&vec(0));
+        problem_->SetParameterBlockVariable(&vec(1));
+        problem_->SetParameterBlockVariable(&vec(2));
+      }
+    }
+  }
+
   const ros::Time start_time = ros::Time::now();
   ceres::Solver::Summary summary;
   ceres::Solve(options_, problem_, &summary);
@@ -269,6 +304,13 @@ void CeresSolver::Reset()
   first_node_ = nodes_->end();
 
   angle_local_parameterization_ = AngleLocalParameterization::Create();
+}
+
+/*****************************************************************************/
+void CeresSolver::setNodeFixedPredicate(std::function<bool(int)> fn)
+/*****************************************************************************/
+{
+  is_node_fixed_ = std::move(fn);
 }
 
 /*****************************************************************************/

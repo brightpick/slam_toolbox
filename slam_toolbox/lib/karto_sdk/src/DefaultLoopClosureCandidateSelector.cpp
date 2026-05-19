@@ -49,6 +49,14 @@ namespace karto
       }
       LocalizedRangeScan* pCandidateScan = it->second;
 
+      // Skip candidates that no longer own their position (superseded by a
+      // later remapping session).
+      if (shouldSkipCandidate(pCandidateScan))
+      {
+        chain.clear();
+        continue;
+      }
+
       Pose2 candidateScanPose = pCandidateScan->GetReferencePose(useScanBarycenter);
       kt_double squaredDistance =
         candidateScanPose.GetPosition().SquaredDistance(pose.GetPosition());

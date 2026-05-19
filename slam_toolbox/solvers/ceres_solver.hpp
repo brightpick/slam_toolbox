@@ -12,6 +12,7 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <functional>
 
 #include <karto_sdk/Mapper.h>
 #include <ceres/ceres.h>
@@ -48,6 +49,8 @@ public:
   virtual void ModifyNode(const int& unique_id, Eigen::Vector3d pose); // change a node's pose
   virtual void GetNodeOrientation(const int& unique_id, double& pose); // get a node's current pose yaw
 
+  void setNodeFixedPredicate(std::function<bool(int)> fn) override;
+
 private:
   // karto
   karto::ScanSolver::IdPoseVector corrections_;
@@ -65,6 +68,9 @@ private:
   std::unordered_map<size_t, ceres::ResidualBlockId>* blocks_;
   std::unordered_map<int, Eigen::Vector3d>::iterator first_node_;
   boost::mutex nodes_mutex_;
+
+  // When set, returns true for nodes that should be held constant
+  std::function<bool(int)> is_node_fixed_;
 };
 
 }

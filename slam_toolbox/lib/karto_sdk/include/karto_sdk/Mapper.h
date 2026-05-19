@@ -21,6 +21,7 @@
 #include <map>
 #include <vector>
 #include <unordered_map>
+#include <functional>
 #include <queue>
 
 #include <Eigen/Core>
@@ -1062,6 +1063,13 @@ namespace karto
       std::cout << "GetNodeOrientation method not implemented for this solver type." << std::endl;
     };
 
+    /**
+     * Set an optional predicate that returns true when a node should be held
+     * fixed (constant) during optimisation.  Used by remapping to pin all
+     * nodes that do not belong to the remapping session.
+     */
+    virtual void setNodeFixedPredicate(std::function<bool(int)> /*fn*/) {}
+
     friend class boost::serialization::access;
     template<class Archive>
     void serialize(Archive &ar, const unsigned int version)
@@ -2050,6 +2058,15 @@ namespace karto
     void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
 
     /**
+     * Set an optional predicate that returns true when a pose-graph node
+     * should be held fixed (constant) during optimisation.  The predicate
+     * is stored on the mapper and forwarded to the currently-attached
+     * scan solver, as well as to any solver attached later via
+     * SetScanSolver().  Pass a default-constructed std::function to clear.
+     */
+    void SetPoseFixedPredicate(std::function<bool(int)> fn);
+
+    /**
      * Gets scan optimizer used by mapper when closing the loop
      * @return pSolver
      */
@@ -2173,7 +2190,12 @@ namespace karto
 
     MapperGraph* m_pGraph;
     ScanSolver* m_pScanOptimizer;
-    LoopClosureCandidateSelector* m_pPendingCandidateSelector;
+    // Persists across deserialization cycles; applied to the graph in
+    // Initialize() whenever a (new) graph is created or replaced.
+    LoopClosureCandidateSelector* m_pCurrentSelector;
+    // Persists across SetScanSolver() calls; forwarded to the attached
+    // solver whenever one is present.
+    std::function<bool(int)> m_PoseFixedPredicate;
     LocalizationScanVertices m_LocalizationScanVertices;
 
 

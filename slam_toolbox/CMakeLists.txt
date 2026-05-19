@@ -7,6 +7,27 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/CMake/")
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/lib/karto_sdk/cmake)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive -std=c++17")
 
+# Add googletest before karto_sdk so catkin's gtest.cmake (loaded by karto_sdk's
+# find_package(catkin)) finds targets already defined in this project's scope,
+# ensuring make rules land in slam_toolbox's Makefile2 rather than nowhere.
+# Also publish the GTEST_FROM_SOURCE_* / GMOCK_FROM_SOURCE_* cache variables so
+# catkin's gtest.cmake populates GTEST_LIBRARIES / GMOCK_LIBRARIES; without these
+# it shortcuts on the existing targets and leaves GTEST_LIBRARIES empty, which
+# trips catkin_add_gtest's assert.
+if(NOT TARGET gmock)
+  add_subdirectory(/usr/src/googletest ${CMAKE_CURRENT_BINARY_DIR}/gtest_build EXCLUDE_FROM_ALL)
+  set(GTEST_FROM_SOURCE_FOUND TRUE CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_INCLUDE_DIRS /usr/src/googletest/googletest/include CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_LIBRARY_DIRS ${CMAKE_CURRENT_BINARY_DIR}/gtest_build/lib CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_LIBRARIES gtest CACHE INTERNAL "")
+  set(GTEST_FROM_SOURCE_MAIN_LIBRARIES gtest_main CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_FOUND TRUE CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_INCLUDE_DIRS /usr/src/googletest/googlemock/include CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_LIBRARY_DIRS ${CMAKE_CURRENT_BINARY_DIR}/gtest_build/lib CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_LIBRARIES gmock CACHE INTERNAL "")
+  set(GMOCK_FROM_SOURCE_MAIN_LIBRARIES gmock_main CACHE INTERNAL "")
+endif()
+
 #karto_sdk lib
 set(BUILD_SHARED_LIBS ON)
 add_subdirectory(lib/karto_sdk)
@@ -92,8 +113,8 @@ target_link_libraries(ceres_solver_plugin ${catkin_LIBRARIES}
 )
 
 #### Tool lib for mapping
-add_library(toolbox_common src/slam_toolbox_common.cpp src/map_saver.cpp src/loop_closure_assistant.cpp src/laser_utils.cpp src/slam_mapper.cpp)
-target_link_libraries(toolbox_common kartoSlamToolbox ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+add_library(toolbox_common src/slam_toolbox_common.cpp src/map_saver.cpp src/loop_closure_assistant.cpp src/laser_utils.cpp src/slam_mapper.cpp src/remapping/ownership_image.cpp src/remapping/polygon_units.cpp src/remapping/remapping_state.cpp)
+target_link_libraries(toolbox_common kartoSlamToolbox ${catkin_LIBRARIES} ${Boost_LIBRARIES} yaml-cpp)
 
 #### Mapping executibles
 add_library(async_slam_toolbox src/slam_toolbox_async.cpp)
@@ -118,7 +139,7 @@ target_link_libraries(lifelong_slam_toolbox_node lifelong_slam_toolbox)
 
 #### Merging maps tool
 add_executable(merge_maps_kinematic src/merge_maps_kinematic.cpp)
-target_link_libraries(merge_maps_kinematic toolbox_common)
+target_link_libraries(merge_maps_kinematic toolbox_common yaml-cpp)
 
 #### testing
 #if(CATKIN_ENABLE_TESTING)
@@ -126,6 +147,10 @@ target_link_libraries(merge_maps_kinematic toolbox_common)
 #  catkin_add_gtest(lifelong_metrics_test test/lifelong_metrics_test.cpp)
 #  target_link_libraries(lifelong_metrics_test lifelong_slam_toolbox)
 #endif()
+
+if(CATKIN_ENABLE_TESTING)
+  add_subdirectory(test)
+endif()
 
 #### Install
 install(TARGETS toolbox_common

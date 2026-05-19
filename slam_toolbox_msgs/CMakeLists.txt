@@ -18,6 +18,7 @@ add_service_files(DIRECTORY srv
     DeserializePoseGraph.srv
     SerializePoseGraph.srv
     Reset.srv
+    StartRemapping.srv
 )
 
 generate_messages(DEPENDENCIES ${MSG_DEPS})

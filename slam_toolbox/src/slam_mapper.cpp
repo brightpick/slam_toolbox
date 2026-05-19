@@ -20,6 +20,9 @@
 
 #include "slam_toolbox/slam_mapper.hpp"
 
+#include <algorithm>
+#include <iterator>
+
 namespace mapper_utils
 {
 
@@ -62,9 +65,97 @@ void SMapper::clearLocalizationBuffer()
 karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 /*****************************************************************************/
 {
-  karto::OccupancyGrid* occ_grid = nullptr;
-  return karto::OccupancyGrid::CreateFromScans(mapper_->GetAllProcessedScans(),
-    resolution);
+  const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
+  if (!remapping_state_.getRemappingPolygon())
+  {
+    return karto::OccupancyGrid::CreateFromScans(scans, resolution);
+  }
+  return buildRemapGrid(scans, resolution);
+}
+
+/*****************************************************************************/
+bool SMapper::computeBaseFootprint(
+  const karto::LocalizedRangeScanVector& scans, double resolution,
+  kt_int32s& width, kt_int32s& height,
+  karto::Vector2<kt_double>& offset) const
+/*****************************************************************************/
+{
+  // BASE-session scans only (session 0 — the saved map loaded from disk).
+  // Historical remap sessions are deliberately excluded: their scan
+  // endpoints can extend the bbox, which would grow the rendered grid
+  // across remap cycles and break the "remap output slots into the old PGM
+  // pixel-for-pixel" guarantee.  Locking to the base session keeps the
+  // footprint and origin identical no matter how many times the user has
+  // remapped.
+  //
+  // Karto's own grid-building path tolerates null entries in the scan
+  // vector (see CreateFromScans / ComputeDimensions in Karto.h), so guard
+  // with `s &&` here too.
+  auto isBaseNode = remapping_state_.makeComputeGridSizePredicate();
+  karto::LocalizedRangeScanVector base_scans;
+  base_scans.reserve(scans.size());
+  std::copy_if(scans.begin(), scans.end(), std::back_inserter(base_scans),
+    [&isBaseNode](karto::LocalizedRangeScan* s) {
+      return s && isBaseNode(s->GetUniqueId());
+    });
+
+  // No base-session scans means we have nothing to anchor the grid
+  // footprint to.  In the current flow this can't happen (the
+  // start_remapping service rejects when no scans are loaded, and after the
+  // first setRemapping every pre-existing scan is a base scan), but
+  // ComputeDimensions on an empty vector leaves width/height undefined —
+  // guard explicitly.
+  if (base_scans.empty()) return false;
+
+  karto::OccupancyGrid::ComputeDimensions(base_scans, resolution, width, height, offset);
+  return true;
+}
+
+/*****************************************************************************/
+void SMapper::rebuildOwnershipImage(double resolution)
+/*****************************************************************************/
+{
+  if (!remapping_state_.getRemappingPolygon()) return;
+
+  kt_int32s width, height;
+  karto::Vector2<kt_double> offset;
+  if (!computeBaseFootprint(
+        mapper_->GetAllProcessedScans(), resolution, width, height, offset))
+  {
+    return;
+  }
+  remapping_state_.buildOwnershipImage(offset, resolution);
+}
+
+/*****************************************************************************/
+bool SMapper::getBaseFootprint(double resolution,
+                               kt_int32s& width, kt_int32s& height,
+                               karto::Vector2<kt_double>& offset) const
+/*****************************************************************************/
+{
+  return computeBaseFootprint(
+    mapper_->GetAllProcessedScans(), resolution, width, height, offset);
+}
+
+/*****************************************************************************/
+karto::OccupancyGrid* SMapper::buildRemapGrid(
+  const karto::LocalizedRangeScanVector& scans, double resolution)
+/*****************************************************************************/
+{
+  kt_int32s width, height;
+  karto::Vector2<kt_double> offset;
+  if (!computeBaseFootprint(scans, resolution, width, height, offset)) return nullptr;
+
+  remapping_state_.buildOwnershipImage(offset, resolution);
+
+  // Construct the grid directly with the base-scan bounds, then render ALL
+  // scans through the ownership filter.  Do NOT use the static
+  // CreateFromScans(scans,...) — that path internally calls ComputeDimensions
+  // on the full scan vector, which would re-grow the footprint and shift the
+  // origin sub-pixel.
+  auto* result = new karto::OccupancyGrid(width, height, offset, resolution);
+  result->CreateFromScans(scans, remapping_state_.makeGridCellPredicate());
+  return result;
 }
 
 /*****************************************************************************/

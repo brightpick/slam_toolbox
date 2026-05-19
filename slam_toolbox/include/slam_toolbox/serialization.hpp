@@ -19,12 +19,12 @@
 #ifndef SLAM_TOOLBOX_SERIALIZATION_H_
 #define SLAM_TOOLBOX_SERIALIZATION_H_
 
-#include <vector>
 #include <string>
 #include <ros/ros.h>
 #include <karto_sdk/Karto.h>
 #include <karto_sdk/Mapper.h>
 #include <sys/stat.h>
+#include "slam_toolbox/remapping/labels_serialization.hpp"
 
 namespace serialization
 {
@@ -37,7 +37,9 @@ inline bool fileExists(const std::string& name)
 
 inline void write(const std::string& filename,
   karto::Mapper& mapper,
-  karto::Dataset& dataset)
+  karto::Dataset& dataset,
+  const slam_toolbox::NodeSessionMap& node_session_ids,
+  const slam_toolbox::SessionPolygonMap& session_polygons)
 {
   try
   {
@@ -48,8 +50,13 @@ inline void write(const std::string& filename,
   {
     ROS_ERROR("Failed to write file: Exception %s", e.what());
   }
+
+  slam_toolbox::saveLabels(
+    filename + std::string(".labels"), node_session_ids, session_polygons);
 }
 
+// Load the posegraph + dataset.  Does NOT touch the sidecar .labels file;
+// use the 5-arg overload when you need session labels.
 inline bool read(const std::string& filename,
   karto::Mapper& mapper,
   karto::Dataset& dataset)
@@ -65,15 +72,30 @@ inline bool read(const std::string& filename,
   {
     mapper.LoadFromFile(filename + std::string(".posegraph"));
     dataset.LoadFromFile(filename + std::string(".data"));
-    return true;
   }
   catch (boost::archive::archive_exception e)
   {
     ROS_ERROR("serialization::Read: Failed to read file: "
       "Exception: %s", e.what());
+    return false;
   }
+  return true;
+}
 
-  return false;
+// Load the posegraph + dataset AND the sidecar .labels file.
+inline bool read(const std::string& filename,
+  karto::Mapper& mapper,
+  karto::Dataset& dataset,
+  slam_toolbox::NodeSessionMap& node_session_ids,
+  slam_toolbox::SessionPolygonMap& session_polygons)
+{
+  if (!read(filename, mapper, dataset)) return false;
+
+  node_session_ids.clear();
+  session_polygons.clear();
+  slam_toolbox::loadLabels(
+    filename + std::string(".labels"), node_session_ids, session_polygons);
+  return true;
 }
 
 } // end namespace
