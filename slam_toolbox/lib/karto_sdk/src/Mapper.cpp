@@ -22,6 +22,7 @@
 #include <set>
 #include <list>
 #include <iterator>
+#include <unordered_map>
 #include <karto_sdk/Types.h>
 #include <math.h>
 #include <assert.h>
@@ -1595,15 +1596,70 @@ namespace karto
         }
         else
         {
+          Pose2 priorPose = pScan->GetCorrectedPose();
+          pScan->SetSensorPose(bestPose);
+          Pose2 correctedPose = pScan->GetCorrectedPose();
+
+          kt_double dx    = correctedPose.GetX()       - priorPose.GetX();
+          kt_double dy    = correctedPose.GetY()       - priorPose.GetY();
+          kt_double dtheta = correctedPose.GetHeading() - priorPose.GetHeading();
+          // Normalize dtheta to [-pi, pi]
+          while (dtheta >  KT_PI) dtheta -= 2.0 * KT_PI;
+          while (dtheta < -KT_PI) dtheta += 2.0 * KT_PI;
+
+          kt_double corrMag = sqrt(dx * dx + dy * dy);
+          kt_double absDtheta = fabs(dtheta);
+
+          // Reject loop closures whose correction exceeds the configured limits.
+          kt_double maxCorrection    = m_pMapper->m_pLoopClosureMaxCorrection->GetValue();
+          kt_double maxRotCorrection = m_pMapper->m_pLoopClosureMaxRotationalCorrection->GetValue();
+
+          bool transExceeded = (maxCorrection    > 0.0) && (corrMag    > maxCorrection);
+          bool rotExceeded   = (maxRotCorrection > 0.0) && (absDtheta  > maxRotCorrection);
+
+          if (transExceeded || rotExceeded)
+          {
+            // Undo the sensor pose change before bailing out
+            pScan->SetSensorPose(priorPose);
+          }
+          else
+          {
           m_pMapper->FireBeginLoopClosure("Closing loop...");
 
-          pScan->SetSensorPose(bestPose);
+          if (m_pMapper->m_pLoopClosureDebugInfo->GetValue())
+          {
+            Pose2 scanRefPose = pScan->GetReferencePose(m_pMapper->m_pUseScanBarycenter->GetValue());
+            kt_double minSquaredDist = DBL_MAX;
+            kt_int32s closestCandidateId = -1;
+            for (const auto* candidateScan : candidateChain)
+            {
+              Pose2 candidateRefPose = candidateScan->GetReferencePose(m_pMapper->m_pUseScanBarycenter->GetValue());
+              kt_double sqDist = scanRefPose.GetPosition().SquaredDistance(candidateRefPose.GetPosition());
+              if (sqDist < minSquaredDist)
+              {
+                minSquaredDist = sqDist;
+                closestCandidateId = static_cast<kt_int32s>(candidateScan->GetStateId());
+              }
+            }
+            kt_double edgeLength = sqrt(minSquaredDist);
+
+            std::cout << "[LC] scan=" << pScan->GetStateId()
+                      << " candidate=" << closestCandidateId
+                      << " chain size=" << candidateChain.size()
+                      << " edge length=" << edgeLength << "m"
+                      << " coarse response=" << coarseResponse
+                      << " fine response=" << fineResponse
+                      << " correction=(" << dx << ", " << dy << ", " << dtheta << ")"
+                      << std::endl;
+          }
+
           LinkChainToScan(candidateChain, pScan, bestPose, covariance);
           CorrectPoses();
 
           m_pMapper->FireEndLoopClosure("Loop closed!");
 
           loopClosed = true;
+          }
         }
       }
 
@@ -2209,6 +2265,24 @@ namespace karto
         "the fine resolution.",
         0.8, GetParameterManager());
 
+    m_pLoopClosureMaxCorrection = new Parameter<kt_double>(
+        "LoopClosureMaxCorrection",
+        "Maximum allowed translational correction (metres) for a loop closure. "
+        "Closures requiring a larger correction are rejected. Set to 0 to disable.",
+        0.5, GetParameterManager());
+
+    m_pLoopClosureMaxRotationalCorrection = new Parameter<kt_double>(
+        "LoopClosureMaxRotationalCorrection",
+        "Maximum allowed rotational correction (radians) for a loop closure. "
+        "Closures requiring a larger angular correction are rejected. Set to 0 to disable.",
+        0.2, GetParameterManager());
+
+    m_pLoopClosureDebugInfo = new Parameter<kt_bool>(
+        "LoopClosureDebugInfo",
+        "Enable debug output for loop closure attempts ([LC_COARSE], [LC_FINE], "
+        "[LC_ACCEPTED], [LC_REJECTED_CORRECTION], [LC_DIAG]) to stdout.",
+        false, GetParameterManager());
+
     //////////////////////////////////////////////////////////////////////////////
     //    CorrelationParameters correlationParameters;
 
@@ -2528,6 +2602,21 @@ namespace karto
   void Mapper::setParamLoopMatchMinimumResponseFine(double d)
   {
     m_pLoopMatchMinimumResponseFine->SetValue((kt_double)d);
+  }
+
+  void Mapper::setParamLoopClosureMaxCorrection(double d)
+  {
+    m_pLoopClosureMaxCorrection->SetValue((kt_double)d);
+  }
+
+  void Mapper::setParamLoopClosureMaxRotationalCorrection(double d)
+  {
+    m_pLoopClosureMaxRotationalCorrection->SetValue((kt_double)d);
+  }
+
+  void Mapper::setParamLoopClosureDebugInfo(bool b)
+  {
+    m_pLoopClosureDebugInfo->SetValue((kt_bool)b);
   }
 
   // Correlation Parameters - Correlation Parameters

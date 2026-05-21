@@ -275,6 +275,24 @@ void SMapper::configure(const ros::NodeHandle& nh)
     mapper_->setParamLoopMatchMinimumResponseFine(loop_match_minimum_response_fine);
   }
 
+  double loop_closure_max_correction;
+  if(nh.getParam("loop_closure_max_correction", loop_closure_max_correction))
+  {
+    mapper_->setParamLoopClosureMaxCorrection(loop_closure_max_correction);
+  }
+
+  double loop_closure_max_rotational_correction;
+  if(nh.getParam("loop_closure_max_rotational_correction", loop_closure_max_rotational_correction))
+  {
+    mapper_->setParamLoopClosureMaxRotationalCorrection(loop_closure_max_rotational_correction);
+  }
+
+  bool loop_closure_debug_info;
+  if(nh.getParam("loop_closure_debug_info", loop_closure_debug_info))
+  {
+    mapper_->setParamLoopClosureDebugInfo(loop_closure_debug_info);
+  }
+
   // Setting Correlation Parameters
   double correlation_search_space_dimension;
   if(nh.getParam("correlation_search_space_dimension",

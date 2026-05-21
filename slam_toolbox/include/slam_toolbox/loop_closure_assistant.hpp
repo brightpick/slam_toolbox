@@ -19,7 +19,9 @@
 #ifndef SLAM_TOOLBOX_LOOP_CLOSURE_ASSISTANT_H_
 #define SLAM_TOOLBOX_LOOP_CLOSURE_ASSISTANT_H_
 
+#include <algorithm>
 #include <functional>
+#include <limits>
 #include <boost/thread.hpp>
 #include <map>
 

@@ -2319,6 +2319,27 @@ namespace karto
      */
     Parameter<kt_double>* m_pLoopMatchMinimumResponseFine;
 
+    /**
+     * Maximum allowed translational correction (metres) for a loop closure to be accepted.
+     * Loop closures whose scan-match correction exceeds this value are rejected even if
+     * the correlation response is high. Set to 0 to disable the check.
+     * Default value is 0.5.
+     */
+    Parameter<kt_double>* m_pLoopClosureMaxCorrection;
+
+    /**
+     * Maximum allowed rotational correction (radians) for a loop closure to be accepted.
+     * Set to 0 to disable the check. Default value is 0.2 (~11 degrees).
+     */
+    Parameter<kt_double>* m_pLoopClosureMaxRotationalCorrection;
+
+    /**
+     * Enable/disable loop closure debug output ([LC_COARSE], [LC_FINE],
+     * [LC_ACCEPTED], [LC_REJECTED_CORRECTION], [LC_DIAG]) to stdout.
+     * Default: false.
+     */
+    Parameter<kt_bool>* m_pLoopClosureDebugInfo;
+
     //////////////////////////////////////////////////////////////////////////////
     //    CorrelationParameters correlationParameters;
 
@@ -2490,6 +2511,9 @@ namespace karto
     void setParamLoopMatchMaximumVarianceCoarse(double d);
     void setParamLoopMatchMinimumResponseCoarse(double d);
     void setParamLoopMatchMinimumResponseFine(double d);
+    void setParamLoopClosureMaxCorrection(double d);
+    void setParamLoopClosureMaxRotationalCorrection(double d);
+    void setParamLoopClosureDebugInfo(bool b);
 
     // Correlation Parameters - Correlation Parameters
     void setParamCorrelationSearchSpaceDimension(double d);
