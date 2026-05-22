@@ -69,7 +69,6 @@ protected:
   // setup
   void setParams(ros::NodeHandle& nh);
   void setSolver(ros::NodeHandle& private_nh_);
-  void setCandidateSelector(ros::NodeHandle& private_nh);
   void setROSInterfaces(ros::NodeHandle& node);
 
   // callbacks
@@ -152,8 +151,6 @@ protected:
   // pluginlib
   pluginlib::ClassLoader<karto::ScanSolver> solver_loader_;
   boost::shared_ptr<karto::ScanSolver> solver_;
-  pluginlib::ClassLoader<karto::LoopClosureCandidateSelector> candidate_selector_loader_;
-  boost::shared_ptr<karto::LoopClosureCandidateSelector> candidate_selector_;
 };
 
 } // end namespace

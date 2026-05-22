@@ -1,9 +1,5 @@
 # Plugin params
 solver_plugin: solver_plugins::CeresSolver
-# Loop closure candidate selector plugin (optional).
-# Omit or comment out to use the built-in default heuristic.
-# To use the built-in explicitly: karto::DefaultLoopClosureCandidateSelector
-# loop_closure_selector_plugin: my_package::MyCustomSelector
 ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
 ceres_preconditioner: SCHUR_JACOBI
 ceres_trust_strategy: LEVENBERG_MARQUARDT

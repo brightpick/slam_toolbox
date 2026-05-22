@@ -27,7 +27,6 @@ namespace slam_toolbox
 /*****************************************************************************/
 SlamToolbox::SlamToolbox(ros::NodeHandle& nh)
 : solver_loader_("slam_toolbox", "karto::ScanSolver"),
-  candidate_selector_loader_("slam_toolbox", "karto::LoopClosureCandidateSelector"),
   processor_type_(PROCESS),
   first_measurement_(true),
   nh_(nh),
@@ -40,7 +39,8 @@ SlamToolbox::SlamToolbox(ros::NodeHandle& nh)
   setParams(nh_);
   setROSInterfaces(nh_);
   setSolver(nh_);
-  setCandidateSelector(nh_);
+  smapper_->getMapper()->SetLoopClosureCandidateFilter(
+    smapper_->remappingState().makeLoopClosureFilter());
 
   laser_assistant_ = std::make_unique<laser_utils::LaserAssistant>(
     nh_, tf_.get(), base_frame_);
@@ -79,35 +79,6 @@ SlamToolbox::~SlamToolbox()
   pose_helper_.reset();
   laser_assistant_.reset();
   scan_holder_.reset();
-}
-
-/*****************************************************************************/
-void SlamToolbox::setCandidateSelector(ros::NodeHandle& private_nh)
-/*****************************************************************************/
-{
-  std::string selector_plugin;
-  if (!private_nh.getParam("loop_closure_selector_plugin", selector_plugin))
-  {
-    candidate_selector_ = boost::make_shared<karto::DefaultLoopClosureCandidateSelector>(smapper_->getMapper());
-    ROS_INFO("Using built-in default loop closure candidate selector.");
-  }
-  else
-  {
-    try
-    {
-      candidate_selector_ = candidate_selector_loader_.createInstance(selector_plugin);
-      ROS_INFO("Using loop closure candidate selector plugin: %s", selector_plugin.c_str());
-    }
-    catch (const pluginlib::PluginlibException& ex)
-    {
-      ROS_FATAL("Failed to create loop closure candidate selector plugin '%s': %s",
-        selector_plugin.c_str(), ex.what());
-      exit(1);
-    }
-  }
-  smapper_->setCandidateSelector(candidate_selector_.get());
-  candidate_selector_->setCandidateFilter(
-    smapper_->remappingState().makeLoopClosureFilter());
 }
 
 /*****************************************************************************/
@@ -712,11 +683,11 @@ void SlamToolbox::loadSerializedPoseGraph(
   smapper_->configure(nh_);
   dataset_.reset(dataset.release());
 
-  // The mapper object was just replaced. Any selector holding a raw Mapper*
-  // must update its pointer, and the selector must be re-registered on the
-  // new mapper's graph so it is not null when loop closure runs.
-  candidate_selector_->setMapper(smapper_->getMapper());
-  smapper_->setCandidateSelector(candidate_selector_.get());
+  // The mapper object was just replaced. Re-attach the loop closure candidate
+  // filter so remapping continues to exclude superseded scans from loop
+  // closures on the freshly-deserialized mapper.
+  smapper_->getMapper()->SetLoopClosureCandidateFilter(
+    smapper_->remappingState().makeLoopClosureFilter());
 
   closure_assistant_->setMapper(smapper_->getMapper());
 
