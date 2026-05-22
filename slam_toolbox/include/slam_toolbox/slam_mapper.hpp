@@ -57,8 +57,6 @@ public:
   void setMapper(karto::Mapper* mapper);
   karto::Mapper* getMapper();
 
-  void setCandidateSelector(karto::LoopClosureCandidateSelector* selector);
-
   void clearLocalizationBuffer();
 
   // Session labels, remapping config, and the ownership image — see

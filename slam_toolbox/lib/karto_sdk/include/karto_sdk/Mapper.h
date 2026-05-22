@@ -33,7 +33,6 @@
 #include <chrono>
 
 #include <karto_sdk/Karto.h>
-#include <karto_sdk/DefaultLoopClosureCandidateSelector.h>
 
 #include "nanoflann_adaptors.h"
 
@@ -708,7 +707,6 @@ namespace karto
 
   class Mapper;
   class ScanMatcher;
-  class LoopClosureCandidateSelector;
 
   /**
    * Graph for graph SLAM algorithm
@@ -722,7 +720,9 @@ namespace karto
      * @param rangeThreshold
      */
     MapperGraph(Mapper* pMapper, kt_double rangeThreshold);
-    MapperGraph();
+    MapperGraph()
+    {
+    }
     /**
      * Destructor
      */
@@ -808,13 +808,6 @@ namespace karto
     {
       return m_pLoopScanMatcher;
     }
-
-    /**
-     * Replace the loop closure candidate selector.
-     * Pass nullptr to restore the built-in default.
-     * MapperGraph does NOT take ownership when a non-null selector is set.
-     */
-    void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
 
     /**
      * Create new scan matcher for graph
@@ -927,12 +920,6 @@ namespace karto
     GraphTraversal<LocalizedRangeScan>* m_pTraversal;
 
     /**
-     * Active loop closure candidate selector. Lifetime is managed by the caller
-     * (e.g. SlamToolbox via pluginlib). Must be set before the first scan is processed.
-     */
-    LoopClosureCandidateSelector* m_pCandidateSelector;
-
-    /**
      * Serialization: class MapperGraph
      */
     friend class boost::serialization::access;
@@ -950,11 +937,6 @@ namespace karto
     }
 
   };  // MapperGraph
-
-  // LoopClosureCandidateSelector is defined in LoopClosureCandidateSelector.h
-  // and DefaultLoopClosureCandidateSelector in DefaultLoopClosureCandidateSelector.h,
-  // so plugins only need to include the lightweight interface header.
-
 
   ////////////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////////////
@@ -2052,10 +2034,12 @@ namespace karto
     void SetScanSolver(ScanSolver* pSolver);
 
     /**
-     * Set the loop closure candidate selector used by the mapper.
-     * Pass nullptr to restore the built-in default.
+     * Set an optional predicate that returns true when a candidate scan
+     * should be skipped during loop closure (e.g. because it no longer
+     * owns its grid region after a more recent remapping session claimed
+     * the area).  Pass a default-constructed std::function to clear.
      */
-    void SetCandidateSelector(LoopClosureCandidateSelector* pSelector);
+    void SetLoopClosureCandidateFilter(std::function<bool(LocalizedRangeScan*)> fn);
 
     /**
      * Set an optional predicate that returns true when a pose-graph node
@@ -2190,9 +2174,9 @@ namespace karto
 
     MapperGraph* m_pGraph;
     ScanSolver* m_pScanOptimizer;
-    // Persists across deserialization cycles; applied to the graph in
-    // Initialize() whenever a (new) graph is created or replaced.
-    LoopClosureCandidateSelector* m_pCurrentSelector;
+    // Predicate that filters candidate scans out of loop closure (used by
+    // remapping to skip scans whose region was claimed by a later session).
+    std::function<bool(LocalizedRangeScan*)> m_LoopClosureCandidateFilter;
     // Persists across SetScanSolver() calls; forwarded to the attached
     // solver whenever one is present.
     std::function<bool(int)> m_PoseFixedPredicate;
