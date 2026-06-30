@@ -6,15 +6,18 @@
  *
  *   sessions:
  *     - id: <int>
- *       polygon: [[x1, y1], [x2, y2], ...]
+ *       polygons: [[[x1, y1], [x2, y2], ...], [[...], ...]]
  *     ...
  *   labels:
  *     - id: <pose_id>
  *       session_id: <int>
  *     ...
  *
- * Sessions and labels are stored separately: polygons are emitted once per
- * session, and labels just record which session each pose belongs to.
+ * Each session owns one or more polygons.  The legacy
+ * single-polygon `polygon: [[x1,y1],...]` key is still accepted on read so
+ * pre-multipolygon `.labels` files keep loading.  Sessions and labels are
+ * stored separately: polygons are emitted once per session, and labels just
+ * record which session each pose belongs to.
  * kBaseSessionId is the implicit default — it never appears in `sessions`,
  * and its labels are omitted from `labels`.  Any pose id absent from the
  * file is treated as kBaseSessionId.
@@ -44,25 +47,30 @@ inline void saveLabels(const std::string& filename,
   YAML::Node root;
 
   // Emit sessions in session_id order (std::map) for determinism.
-  std::map<int, const Polygon*> ordered;
-  for (const auto& [sid, polygon] : session_polygons)
+  std::map<int, const MultiPolygon*> ordered;
+  for (const auto& [sid, polygons] : session_polygons)
   {
-    ordered[sid] = &polygon;
+    ordered[sid] = &polygons;
   }
-  for (const auto& [sid, polyPtr] : ordered)
+  for (const auto& [sid, polygonsPtr] : ordered)
   {
     YAML::Node session;
     session["id"] = sid;
-    YAML::Node poly;
-    for (const auto& v : *polyPtr)
+    YAML::Node polys;
+    for (const auto& polygon : *polygonsPtr)
     {
-      YAML::Node vertex;
-      vertex.push_back(v.GetX());
-      vertex.push_back(v.GetY());
-      vertex.SetStyle(YAML::EmitterStyle::Flow);
-      poly.push_back(vertex);
+      YAML::Node poly;
+      for (const auto& v : polygon)
+      {
+        YAML::Node vertex;
+        vertex.push_back(v.GetX());
+        vertex.push_back(v.GetY());
+        vertex.SetStyle(YAML::EmitterStyle::Flow);
+        poly.push_back(vertex);
+      }
+      polys.push_back(poly);
     }
-    session["polygon"] = poly;
+    session["polygons"] = polys;
     root["sessions"].push_back(session);
   }
 
@@ -110,48 +118,74 @@ inline bool loadLabels(const std::string& filename,
     const YAML::Node sessions_node = root["sessions"];
     if (sessions_node.IsDefined() && sessions_node.IsSequence())
     {
-      for (const auto& session : sessions_node)
+      // Parse one polygon node ([[x,y],...]) into `out`; returns false (and
+      // logs) if the polygon is malformed, has < 3 vertices, or
+      // self-intersects.
+      auto parsePolygon = [](int sid, const YAML::Node& polygon_node,
+                             Polygon& out) -> bool
       {
-        const int sid = session["id"].as<int>();
-
-        const auto& poly = session["polygon"];
-        if (!poly || !poly.IsSequence())
-        {
-          ROS_ERROR("loadLabels: session %d has no polygon — skipped.", sid);
-          continue;
-        }
-
         Polygon polygon;
-        bool malformed = false;
-        for (const auto& vertex : poly)
+        for (const auto& vertex : polygon_node)
         {
           if (!vertex.IsSequence() || vertex.size() != 2)
           {
             ROS_ERROR("loadLabels: session %d has a malformed vertex "
-                      "— session skipped.", sid);
-            malformed = true;
-            break;
+                      "— polygon skipped.", sid);
+            return false;
           }
           polygon.emplace_back(vertex[0].as<double>(), vertex[1].as<double>());
         }
-        if (malformed) continue;
-
         if (polygon.size() < 3)
         {
-          ROS_ERROR("loadLabels: session %d polygon has %zu "
-                    "vertex(es) — at least 3 required, session skipped.",
-                    sid, polygon.size());
-          continue;
+          ROS_ERROR("loadLabels: session %d polygon has %zu vertex(es) — at "
+                    "least 3 required, polygon skipped.", sid, polygon.size());
+          return false;
         }
-
         if (!isSimplePolygon(polygon))
         {
-          ROS_ERROR("loadLabels: session %d polygon is "
-                    "self-intersecting — session skipped.", sid);
+          ROS_ERROR("loadLabels: session %d polygon is self-intersecting "
+                    "— polygon skipped.", sid);
+          return false;
+        }
+        out = std::move(polygon);
+        return true;
+      };
+
+      for (const auto& session : sessions_node)
+      {
+        const int sid = session["id"].as<int>();
+
+        MultiPolygon polygons;
+        const YAML::Node polys = session["polygons"];
+        const YAML::Node poly = session["polygon"];
+        if (polys && polys.IsSequence())
+        {
+          for (const auto& polygon_node : polys)
+          {
+            Polygon polygon;
+            if (polygon_node.IsSequence() && parsePolygon(sid, polygon_node, polygon))
+              polygons.push_back(std::move(polygon));
+          }
+        }
+        else if (poly && poly.IsSequence())
+        {
+          Polygon polygon;
+          if (parsePolygon(sid, poly, polygon)) polygons.push_back(std::move(polygon));
+        }
+        else
+        {
+          ROS_ERROR("loadLabels: session %d has no polygon(s) — skipped.", sid);
           continue;
         }
 
-        session_polygons[sid] = std::move(polygon);
+        if (polygons.empty())
+        {
+          ROS_ERROR("loadLabels: session %d has no valid polygons — skipped.",
+                    sid);
+          continue;
+        }
+
+        session_polygons[sid] = std::move(polygons);
       }
     }
 

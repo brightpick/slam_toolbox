@@ -43,17 +43,18 @@ struct BBox
 void OwnershipImage::build(
   const karto::Vector2<kt_double>& target_offset,
   kt_double resolution,
-  const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
+  const std::unordered_map<int, std::vector<std::vector<karto::Vector2<kt_double>>>>& session_polygons,
   int currentSessionId,
-  const std::vector<karto::Vector2<kt_double>>& currentPolygon)
+  const std::vector<std::vector<karto::Vector2<kt_double>>>& currentPolygons)
 {
   // Compute the union bounding box over every polygon we'll paint.
   BBox bbox;
-  for (const auto& [sid, polygon] : session_polygons)
+  for (const auto& [sid, polygons] : session_polygons)
   {
-    if (sid != currentSessionId) bbox.include(polygon);
+    if (sid != currentSessionId)
+      for (const auto& polygon : polygons) bbox.include(polygon);
   }
-  bbox.include(currentPolygon);
+  for (const auto& polygon : currentPolygons) bbox.include(polygon);
 
   if (bbox.empty)
   {
@@ -103,33 +104,37 @@ void OwnershipImage::build(
   const kt_int32s widthStep = image_->GetWidthStep();
   std::fill(data, data + (widthStep * height), kBaseSessionId);
 
-  // Paint a world-space polygon by transforming its vertices into grid
-  // coords and delegating to the standalone scanline fill.
-  auto paintPolygon = [&](int session_id,
-                          const std::vector<karto::Vector2<kt_double>>& polyWorld)
+  // Paint all polygons of a session by transforming each into grid coords
+  // and delegating to the standalone scanline fill.  Same-session polygons
+  // share a fill value, so overlaps between them are harmless.
+  auto paintSession = [&](int session_id,
+                          const std::vector<std::vector<karto::Vector2<kt_double>>>& polygons)
   {
-    const auto polyGrid = worldToGridPolygon(
-      polyWorld, target_offset, resolution);
-    fillSimplePolygon<kt_int32s>(
-      data, width, height, widthStep, polyGrid, session_id);
+    for (const auto& polygonWorld : polygons)
+    {
+      const auto polygonGrid = worldToGridPolygon(
+        polygonWorld, target_offset, resolution);
+      fillSimplePolygon<kt_int32s>(
+        data, width, height, widthStep, polygonGrid, session_id);
+    }
   };
 
   // Paint historical sessions ordered by session_id so later sessions
   // overwrite earlier ones in overlapping regions.
-  std::map<int, const std::vector<karto::Vector2<kt_double>>*> historical;
-  for (const auto& [sid, polygon] : session_polygons)
+  std::map<int, const std::vector<std::vector<karto::Vector2<kt_double>>>*> historical;
+  for (const auto& [sid, polygons] : session_polygons)
   {
     if (sid != currentSessionId)
     {
-      historical[sid] = &polygon;
+      historical[sid] = &polygons;
     }
   }
 
-  for (const auto& [sid, polyPtr] : historical)
+  for (const auto& [sid, polygonsPtr] : historical)
   {
-    paintPolygon(sid, *polyPtr);
+    paintSession(sid, *polygonsPtr);
   }
-  paintPolygon(currentSessionId, currentPolygon);
+  paintSession(currentSessionId, currentPolygons);
 }
 
 int OwnershipImage::sessionAt(const karto::Vector2<kt_int32s>& pt) const

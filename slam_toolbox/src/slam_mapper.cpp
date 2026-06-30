@@ -66,7 +66,7 @@ karto::OccupancyGrid* SMapper::getOccupancyGrid(const double& resolution)
 /*****************************************************************************/
 {
   const karto::LocalizedRangeScanVector& scans = mapper_->GetAllProcessedScans();
-  if (!remapping_state_.getRemappingPolygon())
+  if (!remapping_state_.getRemappingPolygons())
   {
     return karto::OccupancyGrid::CreateFromScans(scans, resolution);
   }
@@ -115,7 +115,7 @@ bool SMapper::computeBaseFootprint(
 void SMapper::rebuildOwnershipImage(double resolution)
 /*****************************************************************************/
 {
-  if (!remapping_state_.getRemappingPolygon()) return;
+  if (!remapping_state_.getRemappingPolygons()) return;
 
   kt_int32s width, height;
   karto::Vector2<kt_double> offset;
