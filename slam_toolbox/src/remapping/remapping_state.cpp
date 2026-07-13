@@ -69,8 +69,18 @@ void RemappingState::buildOwnershipImage(const karto::Vector2<kt_double>& target
 std::function<bool(int)> RemappingState::makeFixedPosePredicate() const
 {
   return [this](int id) {
-    return remapping_polygons_.has_value() &&
-           getSessionId(id) != current_session_id_;
+    if (remapping_polygons_.has_value())
+    {
+      return getSessionId(id) != current_session_id_;
+    }
+    // Loaded remap history without an armed session: the graph's poses are
+    // an optimum under prior-session pinning, so a solve with nodes free
+    // (e.g. the one ending loadSerializedPoseGraph) would relax them to a
+    // different optimum and shift the base map.  Hold everything fixed
+    // until setRemapping() arms a session.  session_polygons_ (not
+    // node_session_ids_) is the history signal — registerNode populates
+    // the latter during plain mapping too.
+    return !session_polygons_.empty();
   };
 }
 

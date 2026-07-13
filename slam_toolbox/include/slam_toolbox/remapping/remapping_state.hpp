@@ -94,10 +94,12 @@ public:
 
   // ---- Predicate factories ----
 
-  // True when the node should be held fixed during pose-graph optimisation
-  // (i.e. it does not belong to the active remapping session).  Always
-  // false when no remapping is configured.  Captures *this by reference;
-  // RemappingState must outlive the returned callable.
+  // True when the node should be held fixed during pose-graph optimisation.
+  // With a remapping session armed: fixed unless the node belongs to the
+  // active session.  With no session armed: fixed for ALL nodes when loaded
+  // remap history exists, false
+  // otherwise (fresh mapping session).  Captures *this by
+  // reference; RemappingState must outlive the returned callable.
   std::function<bool(int)> makeFixedPosePredicate() const;
 
   // True when the node belongs to the base session (the saved map loaded

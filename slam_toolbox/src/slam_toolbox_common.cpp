@@ -789,12 +789,12 @@ bool SlamToolbox::deserializePoseGraphCallback(
   }
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
-  loadSerializedPoseGraph(mapper, dataset);
-  // Replace the session state with the freshly-loaded history.  Predicates
-  // were wired at startup with [this] capture into smapper_->remappingState();
-  // move-assignment keeps the same address, so the captures stay valid.
+  // Replace the session state with the freshly-loaded history BEFORE
+  // loadSerializedPoseGraph: the solver Compute() at the end of the load
+  // must already see it.
   smapper_->remappingState() = RemappingState{
     std::move(node_session_ids), std::move(session_polygons)};
+  loadSerializedPoseGraph(mapper, dataset);
 
   updateMap();
 
