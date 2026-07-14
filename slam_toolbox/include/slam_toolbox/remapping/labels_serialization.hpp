@@ -124,6 +124,12 @@ inline bool loadLabels(const std::string& filename,
       auto parsePolygon = [](int sid, const YAML::Node& polygon_node,
                              Polygon& out) -> bool
       {
+        if (!polygon_node.IsSequence())
+        {
+          ROS_ERROR("loadLabels: session %d has a non-sequence polygon entry "
+                    "— polygon skipped.", sid);
+          return false;
+        }
         Polygon polygon;
         for (const auto& vertex : polygon_node)
         {
@@ -163,7 +169,7 @@ inline bool loadLabels(const std::string& filename,
           for (const auto& polygon_node : polys)
           {
             Polygon polygon;
-            if (polygon_node.IsSequence() && parsePolygon(sid, polygon_node, polygon))
+            if (parsePolygon(sid, polygon_node, polygon))
               polygons.push_back(std::move(polygon));
           }
         }
