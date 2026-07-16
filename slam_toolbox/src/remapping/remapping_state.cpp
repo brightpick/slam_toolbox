@@ -25,34 +25,43 @@ void RemappingState::registerNode(int node_id)
   node_session_ids_[node_id] = current_session_id_;
 }
 
-bool RemappingState::setRemapping(Polygon polygon)
+bool RemappingState::setRemapping(MultiPolygon polygons)
 {
-  if (!isSimplePolygon(polygon))
+  if (polygons.empty())
   {
-    ROS_ERROR("RemappingState::setRemapping: rejected polygon with %zu vertices "
-              "— it must have at least 3 vertices and must not self-intersect.",
-              polygon.size());
+    ROS_ERROR("RemappingState::setRemapping: rejected empty polygon set "
+              "— at least one polygon is required.");
     return false;
   }
+  for (const auto& polygon : polygons)
+  {
+    if (!isSimplePolygon(polygon))
+    {
+      ROS_ERROR("RemappingState::setRemapping: rejected polygon with %zu "
+                "vertices — each polygon must have at least 3 vertices and "
+                "must not self-intersect.", polygon.size());
+      return false;
+    }
+  }
 
-  // Tag new scans with the computed session_id and record the polygon so
-  // it is serialized to .labels on save.
+  // Tag new scans with the computed session_id and record the polygons so
+  // they are serialized to .labels on save.
   current_session_id_ = computeNextSessionId();
-  session_polygons_[current_session_id_] = polygon;
+  session_polygons_[current_session_id_] = polygons;
   ROS_INFO("RemappingState: remapping session %d configured "
-           "(%zu-vertex polygon).", current_session_id_, polygon.size());
-  remapping_polygon_ = std::move(polygon);
+           "(%zu polygon(s)).", current_session_id_, polygons.size());
+  remapping_polygons_ = std::move(polygons);
   return true;
 }
 
 void RemappingState::buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
                                          kt_double resolution)
 {
-  if (!remapping_polygon_) return;
+  if (!remapping_polygons_) return;
   ownership_image_.build(target_offset, resolution,
                          session_polygons_,
                          current_session_id_,
-                         *remapping_polygon_);
+                         *remapping_polygons_);
 }
 
 // ---- Predicate factories ----
@@ -60,8 +69,11 @@ void RemappingState::buildOwnershipImage(const karto::Vector2<kt_double>& target
 std::function<bool(int)> RemappingState::makeFixedPosePredicate() const
 {
   return [this](int id) {
-    return remapping_polygon_.has_value() &&
-           getSessionId(id) != current_session_id_;
+    if (remapping_polygons_.has_value())
+    {
+      return getSessionId(id) != current_session_id_;
+    }
+    return !session_polygons_.empty();
   };
 }
 

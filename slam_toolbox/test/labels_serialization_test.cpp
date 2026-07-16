@@ -88,7 +88,7 @@ TEST_F(LabelsSerializationTest, BaseSessionNodesAreNotEmitted)
 TEST_F(LabelsSerializationTest, RoundTripSingleSessionWithPolygon)
 {
   NodeMap src_nodes{{10, 1}, {11, 1}};
-  PolyMap src_polys{{1, triangle()}};
+  PolyMap src_polys{{1, {triangle()}}};
   slam_toolbox::saveLabels(path_.string(), src_nodes, src_polys);
 
   NodeMap nodes;
@@ -101,15 +101,16 @@ TEST_F(LabelsSerializationTest, RoundTripSingleSessionWithPolygon)
 
   ASSERT_EQ(polygons.size(), 1u);
   ASSERT_TRUE(polygons.count(1));
-  ASSERT_EQ(polygons[1].size(), 3u);
-  EXPECT_DOUBLE_EQ(polygons[1][0].GetX(), 0.0);
-  EXPECT_DOUBLE_EQ(polygons[1][2].GetY(), 1.0);
+  ASSERT_EQ(polygons[1].size(), 1u);
+  ASSERT_EQ(polygons[1][0].size(), 3u);
+  EXPECT_DOUBLE_EQ(polygons[1][0][0].GetX(), 0.0);
+  EXPECT_DOUBLE_EQ(polygons[1][0][2].GetY(), 1.0);
 }
 
 TEST_F(LabelsSerializationTest, RoundTripMultipleSessionsWithDistinctPolygons)
 {
   NodeMap src_nodes{{1, 1}, {2, 2}, {3, 0}};  // pose 3 is base — not emitted
-  PolyMap src_polys{{1, triangle(0.0)}, {2, triangle(10.0)}};
+  PolyMap src_polys{{1, {triangle(0.0)}}, {2, {triangle(10.0)}}};
   slam_toolbox::saveLabels(path_.string(), src_nodes, src_polys);
 
   NodeMap nodes;
@@ -120,8 +121,8 @@ TEST_F(LabelsSerializationTest, RoundTripMultipleSessionsWithDistinctPolygons)
   ASSERT_EQ(nodes.size(), 2u);
 
   ASSERT_EQ(polygons.size(), 2u);
-  EXPECT_DOUBLE_EQ(polygons[1][0].GetX(), 0.0);
-  EXPECT_DOUBLE_EQ(polygons[2][0].GetX(), 10.0);
+  EXPECT_DOUBLE_EQ(polygons[1][0][0].GetX(), 0.0);
+  EXPECT_DOUBLE_EQ(polygons[2][0][0].GetX(), 10.0);
 }
 
 // ---- load: malformed polygons cause the session to be skipped ----
@@ -178,6 +179,27 @@ TEST_F(LabelsSerializationTest, LoadSkipsSessionWithSelfIntersectingPolygon)
   ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
   ASSERT_EQ(nodes.size(), 1u);
   EXPECT_EQ(polygons.count(7), 0u);
+}
+
+TEST_F(LabelsSerializationTest, LoadSkipsNonSequencePolygonEntryKeepsValidOnes)
+{
+  std::ofstream fout(path_);
+  fout <<
+    "sessions:\n"
+    "  - id: 1\n"
+    "    polygons:\n"
+    "      - not_a_polygon\n"
+    "      - [[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]]\n"
+    "labels:\n"
+    "  - id: 42\n"
+    "    session_id: 1\n";
+  fout.close();
+
+  NodeMap nodes;
+  PolyMap polygons;
+  ASSERT_TRUE(slam_toolbox::loadLabels(path_.string(), nodes, polygons));
+  ASSERT_EQ(polygons.count(1), 1u);
+  EXPECT_EQ(polygons[1].size(), 1u);
 }
 
 TEST_F(LabelsSerializationTest, LoadReturnsFalseOnCorruptYaml)

@@ -4,7 +4,7 @@
 # each call advances to a fresh session, so multiple disjoint regions can
 # be remapped during a single runtime.
 
-# Coordinate frame for `polygon`.
+# Coordinate frame for the polygon vertices.
 #   UNITS_PIXELS — vertices are in PGM pixel coords (px, py) of the
 #                  currently-loaded grid; py=0 is the top row.  This is
 #                  the default (uint8 zero-initialises).
@@ -12,7 +12,11 @@
 uint8 UNITS_PIXELS=0
 uint8 UNITS_WORLD=1
 
-geometry_msgs/Polygon polygon
+# Remap area as one or more polygons.  All polygons belong to the same
+# remapping session.  When `polygons` is empty the deprecated single
+# `polygon` field is used instead, so existing callers keep working.
+geometry_msgs/Polygon[] polygons
+geometry_msgs/Polygon polygon   # deprecated: used only if `polygons` is empty
 uint8 units
 ---
 # Result code definitions

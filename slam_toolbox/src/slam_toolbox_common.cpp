@@ -789,12 +789,12 @@ bool SlamToolbox::deserializePoseGraphCallback(
   }
   ROS_DEBUG("DeserializePoseGraph: Successfully read file.");
 
-  loadSerializedPoseGraph(mapper, dataset);
-  // Replace the session state with the freshly-loaded history.  Predicates
-  // were wired at startup with [this] capture into smapper_->remappingState();
-  // move-assignment keeps the same address, so the captures stay valid.
+  // Replace the session state with the freshly-loaded history BEFORE
+  // loadSerializedPoseGraph: the solver Compute() at the end of the load
+  // must already see it.
   smapper_->remappingState() = RemappingState{
     std::move(node_session_ids), std::move(session_polygons)};
+  loadSerializedPoseGraph(mapper, dataset);
 
   updateMap();
 
@@ -875,30 +875,40 @@ bool SlamToolbox::startRemappingCallback(
     return true;
   }
 
-  Polygon polygon;
-  polygon.reserve(req.polygon.points.size());
-  for (const auto& p : req.polygon.points)
+  if (req.units != Req::UNITS_PIXELS && req.units != Req::UNITS_WORLD)
   {
-    polygon.emplace_back(p.x, p.y);
+    resp.result = Resp::RESULT_INVALID_UNITS;
+    resp.message = "units must be UNITS_PIXELS (0) or UNITS_WORLD (1)";
+    return true;
   }
 
-  switch (req.units)
+  std::vector<geometry_msgs::Polygon> polygon_msgs = req.polygons;
+  if (polygon_msgs.empty())
   {
-    case Req::UNITS_PIXELS:
+    polygon_msgs.push_back(req.polygon);
+  }
+
+  MultiPolygon polygons;
+  polygons.reserve(polygon_msgs.size());
+  for (const auto& polygon_msg : polygon_msgs)
+  {
+    Polygon polygon;
+    polygon.reserve(polygon_msg.points.size());
+    for (const auto& p : polygon_msg.points)
+    {
+      polygon.emplace_back(p.x, p.y);
+    }
+    if (req.units == Req::UNITS_PIXELS)
+    {
       polygon = pixelPolygonToWorld(polygon, offset, resolution_, height);
-      break;
-    case Req::UNITS_WORLD:
-      break;
-    default:
-      resp.result = Resp::RESULT_INVALID_UNITS;
-      resp.message = "units must be UNITS_PIXELS (0) or UNITS_WORLD (1)";
-      return true;
+    }
+    polygons.push_back(std::move(polygon));
   }
 
-  if (!smapper_->remappingState().setRemapping(std::move(polygon)))
+  if (!smapper_->remappingState().setRemapping(std::move(polygons)))
   {
     resp.result = Resp::RESULT_INVALID_POLYGON;
-    resp.message = "polygon must have >= 3 vertices and not self-intersect";
+    resp.message = "each polygon must have >= 3 vertices and not self-intersect";
     return true;
   }
 

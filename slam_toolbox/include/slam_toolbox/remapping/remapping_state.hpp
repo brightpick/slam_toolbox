@@ -32,8 +32,12 @@ namespace slam_toolbox
 // owner) and re-used by labels_serialization so there's a single source of
 // truth for the map shapes that flow between save/load and RemappingState.
 using Polygon = std::vector<karto::Vector2<kt_double>>;
+// A session's remap area is a set of polygons.  A single polygon is the
+// common case; multiple polygons let one session cover disjoint regions or a
+// non-simple shape.  Polygons of the same session may overlap freely.
+using MultiPolygon = std::vector<Polygon>;
 using NodeSessionMap = std::unordered_map<int, int>;
-using SessionPolygonMap = std::unordered_map<int, Polygon>;
+using SessionPolygonMap = std::unordered_map<int, MultiPolygon>;
 
 // Session id for the base map loaded from a .posegraph file.  Backwards
 // compatibility: pre-remapping .posegraph files have no .labels sidecar, so
@@ -61,17 +65,18 @@ public:
   // before any setRemapping(), and as the active remap session afterwards.
   void registerNode(int node_id);
 
-  // Configure remapping with a simple polygon (edges must not cross
-  // themselves; non-convex shapes are allowed).  Returns false and leaves
-  // remapping unchanged if the polygon has < 3 vertices or self-intersects.
-  // On success an INFO log line is emitted with the new session id; the
-  // session id itself is an internal detail and not exposed.  Subsequent
-  // registerNode() calls tag new scans with it; the polygon is also
-  // recorded in session_polygons so it is serialized to .labels on save.
-  bool setRemapping(Polygon polygon);
+  // Configure remapping with a set of simple polygons (each polygon's edges
+  // must not cross themselves; non-convex shapes are allowed).  Returns
+  // false and leaves remapping unchanged if the set is empty or any polygon
+  // has < 3 vertices or self-intersects.  On success an INFO log line is
+  // emitted with the new session id; the session id itself is an internal
+  // detail and not exposed.  Subsequent registerNode() calls tag new scans
+  // with it; the polygons are also recorded in session_polygons so they are
+  // serialized to .labels on save.
+  bool setRemapping(MultiPolygon polygons);
 
   // Build the ownership image from session_polygons + current remapping
-  // polygon.  The image sizes itself to the polygon union bbox;
+  // polygons.  The image sizes itself to the polygon union bbox;
   // `target_offset` anchors its origin so target-grid cell indices remain
   // valid in it.  No-op when no remapping is active.
   void buildOwnershipImage(const karto::Vector2<kt_double>& target_offset,
@@ -79,8 +84,8 @@ public:
 
   // ---- Observers ----
 
-  // Active remapping polygon, if one is configured.
-  const std::optional<Polygon>& getRemappingPolygon() const { return remapping_polygon_; }
+  // Active remapping polygons, if remapping is configured.
+  const std::optional<MultiPolygon>& getRemappingPolygons() const { return remapping_polygons_; }
 
   // Per-node session ids and per-session polygons.  Read by the labels
   // serialization path.
@@ -89,10 +94,12 @@ public:
 
   // ---- Predicate factories ----
 
-  // True when the node should be held fixed during pose-graph optimisation
-  // (i.e. it does not belong to the active remapping session).  Always
-  // false when no remapping is configured.  Captures *this by reference;
-  // RemappingState must outlive the returned callable.
+  // True when the node should be held fixed during pose-graph optimisation.
+  // With a remapping session armed: fixed unless the node belongs to the
+  // active session.  With no session armed: fixed for ALL nodes when loaded
+  // remap history exists, false
+  // otherwise (fresh mapping session).  Captures *this by
+  // reference; RemappingState must outlive the returned callable.
   std::function<bool(int)> makeFixedPosePredicate() const;
 
   // True when the node belongs to the base session (the saved map loaded
@@ -129,7 +136,7 @@ private:
   NodeSessionMap node_session_ids_;
   SessionPolygonMap session_polygons_;
   int current_session_id_{kBaseSessionId};
-  std::optional<Polygon> remapping_polygon_;
+  std::optional<MultiPolygon> remapping_polygons_;
   OwnershipImage ownership_image_;
 };
 

@@ -29,15 +29,16 @@ class OwnershipImage
 public:
   // Build a fresh image sized to the union bbox of all polygons
   // (historical + current), aligned to `target_offset` at `resolution`.
-  // Historical sessions (entries in session_polygons whose session_id !=
-  // currentSessionId) are painted first in session-id order, then
-  // currentPolygon paints last so it wins every overlap.  Cells outside
-  // the resulting image are treated as session 0 by `sessionAt()`.
+  // Each session may own several polygons.  Historical sessions (entries in
+  // session_polygons whose session_id != currentSessionId) are painted
+  // first in session-id order, then currentPolygons paint last so they win
+  // every overlap.  Cells outside the resulting image are treated as
+  // session 0 by `sessionAt()`.
   void build(const karto::Vector2<kt_double>& target_offset,
              kt_double resolution,
-             const std::unordered_map<int, std::vector<karto::Vector2<kt_double>>>& session_polygons,
+             const std::unordered_map<int, std::vector<std::vector<karto::Vector2<kt_double>>>>& session_polygons,
              int currentSessionId,
-             const std::vector<karto::Vector2<kt_double>>& currentPolygon);
+             const std::vector<std::vector<karto::Vector2<kt_double>>>& currentPolygons);
 
   // Session owning the cell at grid index `pt` (indices are in target-grid
   // coords, which this image shares by virtue of using target_offset).
