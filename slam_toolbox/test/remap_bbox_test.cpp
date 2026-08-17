@@ -544,16 +544,16 @@ TEST(SMapperPolygonValidationTest, SelfIntersectingPolygonIsRejected)
   std::vector<karto::Vector2<kt_double>> bowtie{
     {0.0, 0.0}, {2.0, 2.0}, {2.0, 0.0}, {0.0, 2.0}
   };
-  EXPECT_FALSE(smapper.remappingState().setRemapping(bowtie));
-  EXPECT_FALSE(smapper.remappingState().getRemappingPolygon().has_value());
+  EXPECT_FALSE(smapper.remappingState().setRemapping({bowtie}));
+  EXPECT_FALSE(smapper.remappingState().getRemappingPolygons().has_value());
 }
 
 TEST(SMapperPolygonValidationTest, TooFewVerticesIsRejected)
 {
   mapper_utils::SMapper smapper;
   std::vector<karto::Vector2<kt_double>> line{{0.0, 0.0}, {1.0, 0.0}};
-  EXPECT_FALSE(smapper.remappingState().setRemapping(line));
-  EXPECT_FALSE(smapper.remappingState().getRemappingPolygon().has_value());
+  EXPECT_FALSE(smapper.remappingState().setRemapping({line}));
+  EXPECT_FALSE(smapper.remappingState().getRemappingPolygons().has_value());
 }
 
 
@@ -614,7 +614,7 @@ protected:
   void enableRemapping()
   {
     ASSERT_TRUE(smapper_.remappingState().setRemapping(
-      makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)));
+      {makeRectPolygon(kBboxX1, kBboxY1, kBboxX2, kBboxY2)}));
   }
 
   void TearDown() override
@@ -743,18 +743,19 @@ TEST(OwnershipLayeringTest, HigherSessionIdOverwritesLowerAndCurrentWinsAll)
       {x1, y1}, {x2, y1}, {x2, y2}, {x1, y2}};
   };
 
-  std::unordered_map<int, std::vector<karto::Vector2<kt_double>>> session_polygons{
-    {1, rect(0.0, 0.0, 4.0, 4.0)},
-    {2, rect(2.0, 0.0, 6.0, 4.0)}};
+  std::unordered_map<int, std::vector<std::vector<karto::Vector2<kt_double>>>> session_polygons{
+    {1, {rect(0.0, 0.0, 4.0, 4.0)}},
+    {2, {rect(2.0, 0.0, 6.0, 4.0)}}};
   const int currentSessionId = 3;
-  const auto currentPolygon = rect(3.0, 0.0, 5.0, 4.0);
+  const std::vector<std::vector<karto::Vector2<kt_double>>> currentPolygons{
+    rect(3.0, 0.0, 5.0, 4.0)};
 
   // Image anchors its origin at target_offset (-2, -2) and sizes itself to
   // the polygon union bbox.  Queries outside the image fall back to
   // session 0 via sessionAtWorld's bounds check.
   slam_toolbox::OwnershipImage image;
   image.build(karto::Vector2<kt_double>(-2.0, -2.0), /*resolution=*/1.0,
-              session_polygons, currentSessionId, currentPolygon);
+              session_polygons, currentSessionId, currentPolygons);
 
   auto owner = [&](double x, double y) {
     return image.sessionAtWorld(karto::Vector2<kt_double>(x, y));

@@ -112,7 +112,7 @@ TEST(CeresSolverFixedPoseTest, SessionBasedPinningPreventsMovement)
 
   std::vector<karto::Vector2<kt_double>> polygon{
     {0.0, 0.0}, {100.0, 0.0}, {100.0, 100.0}, {0.0, 100.0}};
-  ASSERT_TRUE(smapper.remappingState().setRemapping(polygon));
+  ASSERT_TRUE(smapper.remappingState().setRemapping({polygon}));
 
   smapper.remappingState().registerNode(2);
 
