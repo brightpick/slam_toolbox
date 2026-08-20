@@ -22,8 +22,10 @@ namespace map_saver
 {
 
 /*****************************************************************************/
-MapSaver::MapSaver(ros::NodeHandle & nh, const std::string& map_name)
-: nh_(nh), map_name_(map_name), received_map_(false)
+MapSaver::MapSaver(ros::NodeHandle & nh, const std::string& map_name,
+  std::function<bool()> render_map)
+: nh_(nh), map_name_(map_name), render_map_(std::move(render_map)),
+  received_map_(false)
 /*****************************************************************************/
 {
   server_ = nh_.advertiseService("save_map", &MapSaver::saveMapCallback, this);
@@ -61,7 +63,7 @@ bool MapSaver::saveMapCallback(
     ROS_INFO("SlamToolbox: Saving map in current directory.");
     int rc = system("rosrun map_server map_saver");
   }
-  ros::Duration(1.0).sleep();
+  ros::WallDuration(1.0).sleep();
   return true;
 }
 

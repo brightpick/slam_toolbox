@@ -47,7 +47,8 @@ SlamToolbox::SlamToolbox(ros::NodeHandle& nh)
   pose_helper_ = std::make_unique<pose_utils::GetPoseHelper>(
     tf_.get(), base_frame_, odom_frame_);
   scan_holder_ = std::make_unique<laser_utils::ScanHolder>(lasers_);
-  map_saver_ = std::make_unique<map_saver::MapSaver>(nh_, map_name_);
+  map_saver_ = std::make_unique<map_saver::MapSaver>(
+    nh_, map_name_, [this] { return updateMap(); });
   closure_assistant_ =
     std::make_unique<loop_closure_assistant::LoopClosureAssistant>(
     nh_, smapper_->getMapper(), scan_holder_.get(), state_, processor_type_);
