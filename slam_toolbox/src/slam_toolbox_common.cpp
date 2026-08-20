@@ -235,6 +235,14 @@ void SlamToolbox::loadPoseGraphByParams(ros::NodeHandle& nh)
   bool dock = false;
   if (shouldStartWithPoseGraph(filename, pose, dock))
   {
+    if (filename.empty() && nh_.hasParam("map_start_pose"))
+    {
+      map_start_pose_ = std::make_unique<karto::Pose2>(pose.x, pose.y, pose.theta);
+      ROS_INFO("SlamToolbox: no map to load; anchoring the fresh graph at map_start_pose "
+        "[%.3f, %.3f, %.3f].", pose.x, pose.y, pose.theta);
+      return;
+    }
+
     slam_toolbox_msgs::DeserializePoseGraph::Request req;
     slam_toolbox_msgs::DeserializePoseGraph::Response resp;
     req.initial_pose = pose;
@@ -486,6 +494,13 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
   karto::Pose2& karto_pose)
 /*****************************************************************************/
 {  
+  if (map_start_pose_)
+  {
+    reprocessing_transform_ = smapper_->toTfPose(*map_start_pose_) *
+      smapper_->toTfPose(karto_pose).inverse();
+    map_start_pose_.reset();
+  }
+
   // get our localized range scan
   karto::LocalizedRangeScan* range_scan = getLocalizedRangeScan(
     laser, scan, karto_pose);

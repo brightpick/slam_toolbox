@@ -146,6 +146,7 @@ protected:
   nav_msgs::GetMap::Response map_;
   ProcessType processor_type_;
   std::unique_ptr<karto::Pose2> process_near_pose_;
+  std::unique_ptr<karto::Pose2> map_start_pose_;
   tf2::Transform reprocessing_transform_;
 
   // pluginlib
