@@ -1,0 +1,21 @@
+resolution: 0.01
+scan_topic: /scan_merged
+max_laser_range: 25.0
+map_update_interval: 5.0
+tf_buffer_duration: 200.0
+scan_buffer_size: 200
+minimum_travel_distance: 0.5
+scan_buffer_maximum_scan_distance: 10
+loop_search_maximum_distance: 3.0 # 3.0 The maximum distance from the current robot pose to search for potential loop closure candidates.
+loop_match_minimum_chain_size: 7 # 10 The minimum number of consecutive scans (a "chain") required to validate a loop closure candidate.
+loop_match_minimum_response_coarse: 0.35 # 0.35 Minimum correlation response for a coarse scan match to proceed with a fine loop closure search.
+loop_match_minimum_response_fine: 0.45  # 0.45 Minimum correlation response for a fine scan match to accept a loop closure.
+
+loop_search_space_dimension: 1.5
+loop_search_space_smear_deviation: 0.12
+
+distance_variance_penalty: 1
+angle_variance_penalty: 2
+
+loop_closure_max_correction: 0.3  # max allowed loop closure correction in meters. If the loop closure correction is larger than this value, it will be rejected. This is a safety measure to prevent large jumps in the robot's pose due to incorrect loop closures.
+enable_interactive_mode: false
