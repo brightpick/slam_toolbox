@@ -497,8 +497,19 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
 {  
   if (map_start_pose_)
   {
-    reprocessing_transform_ = smapper_->toTfPose(*map_start_pose_) *
-      smapper_->toTfPose(karto_pose).inverse();
+    // Rotate the odom frame by the seeded heading instead of pinning this scan's
+    // heading to it: which scan is processed first depends on playback timing, and
+    // its odom heading would otherwise leak into the map's orientation.
+    tf2::Quaternion seed_rotation(0., 0., 0., 1.0);
+    seed_rotation.setRPY(0., 0., map_start_pose_->GetHeading());
+    const tf2::Transform first_pose = smapper_->toTfPose(karto_pose);
+    reprocessing_transform_ =
+      tf2::Transform(seed_rotation, tf2::Vector3(map_start_pose_->GetX(),
+        map_start_pose_->GetY(), 0.0)) *
+      tf2::Transform(tf2::Quaternion(0., 0., 0., 1.0), -first_pose.getOrigin());
+    ROS_INFO("SlamToolbox: map frame rotated %.6f rad from odom, first scan placed "
+      "at [%.3f, %.3f].", map_start_pose_->GetHeading(), map_start_pose_->GetX(),
+      map_start_pose_->GetY());
     map_start_pose_.reset();
   }
 
