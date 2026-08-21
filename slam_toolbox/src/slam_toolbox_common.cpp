@@ -48,7 +48,7 @@ SlamToolbox::SlamToolbox(ros::NodeHandle& nh)
     tf_.get(), base_frame_, odom_frame_);
   scan_holder_ = std::make_unique<laser_utils::ScanHolder>(lasers_);
   map_saver_ = std::make_unique<map_saver::MapSaver>(
-    nh_, map_name_, [this] { return updateMap(); });
+    nh_, map_name_, [this] { return updateMap(true); });
   closure_assistant_ =
     std::make_unique<loop_closure_assistant::LoopClosureAssistant>(
     nh_, smapper_->getMapper(), scan_holder_.get(), state_, processor_type_);
@@ -326,10 +326,10 @@ karto::LaserRangeFinder* SlamToolbox::getLaser(const
 }
 
 /*****************************************************************************/
-bool SlamToolbox::updateMap()
+bool SlamToolbox::updateMap(bool force)
 /*****************************************************************************/
 {
-  if (sst_.getNumSubscribers() == 0)
+  if (!force && sst_.getNumSubscribers() == 0)
   {
     return true;
   }

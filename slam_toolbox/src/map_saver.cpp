@@ -45,6 +45,14 @@ bool MapSaver::saveMapCallback(
   slam_toolbox_msgs::SaveMap::Response& resp)
 /*****************************************************************************/
 {
+  // Re-render first: the periodic publisher sleeps on sim time, so once the bag
+  // ends and /clock stops it never runs again — the latched map would be from
+  // before the queued scans were processed.
+  if (render_map_ && render_map_())
+  {
+    received_map_ = true;
+  }
+
   if (!received_map_)
   {
     ROS_WARN("Map Saver: Cannot save map, no map yet received on topic %s.",
