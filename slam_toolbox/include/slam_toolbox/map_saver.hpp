@@ -23,6 +23,8 @@
 #include "ros/ros.h"
 #include "slam_toolbox/toolbox_msgs.hpp"
 
+#include <functional>
+
 namespace map_saver
 {
 
@@ -30,7 +32,8 @@ namespace map_saver
 class MapSaver
 {
 public:
-  MapSaver(ros::NodeHandle& nh, const std::string& service_name);
+  MapSaver(ros::NodeHandle& nh, const std::string& service_name,
+           std::function<bool()> render_map = nullptr);
 
 protected:
   bool saveMapCallback(slam_toolbox_msgs::SaveMap::Request& req,
@@ -42,6 +45,7 @@ private:
   ros::ServiceServer server_;
   ros::Subscriber sub_;
   std::string service_name_, map_name_;
+  std::function<bool()> render_map_;
   bool received_map_;
 };
 

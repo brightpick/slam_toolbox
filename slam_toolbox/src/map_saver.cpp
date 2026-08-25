@@ -22,8 +22,10 @@ namespace map_saver
 {
 
 /*****************************************************************************/
-MapSaver::MapSaver(ros::NodeHandle & nh, const std::string& map_name)
-: nh_(nh), map_name_(map_name), received_map_(false)
+MapSaver::MapSaver(ros::NodeHandle & nh, const std::string& map_name,
+  std::function<bool()> render_map)
+: nh_(nh), map_name_(map_name), render_map_(std::move(render_map)),
+  received_map_(false)
 /*****************************************************************************/
 {
   server_ = nh_.advertiseService("save_map", &MapSaver::saveMapCallback, this);
@@ -43,6 +45,14 @@ bool MapSaver::saveMapCallback(
   slam_toolbox_msgs::SaveMap::Response& resp)
 /*****************************************************************************/
 {
+  // Re-render first: the periodic publisher sleeps on sim time, so once the bag
+  // ends and /clock stops it never runs again — the latched map would be from
+  // before the queued scans were processed.
+  if (render_map_ && render_map_())
+  {
+    received_map_ = true;
+  }
+
   if (!received_map_)
   {
     ROS_WARN("Map Saver: Cannot save map, no map yet received on topic %s.",
@@ -61,7 +71,7 @@ bool MapSaver::saveMapCallback(
     ROS_INFO("SlamToolbox: Saving map in current directory.");
     int rc = system("rosrun map_server map_saver");
   }
-  ros::Duration(1.0).sleep();
+  ros::WallDuration(1.0).sleep();
   return true;
 }
 

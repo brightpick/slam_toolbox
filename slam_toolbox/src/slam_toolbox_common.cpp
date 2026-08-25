@@ -47,7 +47,8 @@ SlamToolbox::SlamToolbox(ros::NodeHandle& nh)
   pose_helper_ = std::make_unique<pose_utils::GetPoseHelper>(
     tf_.get(), base_frame_, odom_frame_);
   scan_holder_ = std::make_unique<laser_utils::ScanHolder>(lasers_);
-  map_saver_ = std::make_unique<map_saver::MapSaver>(nh_, map_name_);
+  map_saver_ = std::make_unique<map_saver::MapSaver>(
+    nh_, map_name_, [this] { return updateMap(true); });
   closure_assistant_ =
     std::make_unique<loop_closure_assistant::LoopClosureAssistant>(
     nh_, smapper_->getMapper(), scan_holder_.get(), state_, processor_type_);
@@ -235,6 +236,14 @@ void SlamToolbox::loadPoseGraphByParams(ros::NodeHandle& nh)
   bool dock = false;
   if (shouldStartWithPoseGraph(filename, pose, dock))
   {
+    if (filename.empty() && nh_.hasParam("map_start_pose"))
+    {
+      map_start_pose_ = std::make_unique<karto::Pose2>(pose.x, pose.y, pose.theta);
+      ROS_INFO("SlamToolbox: no map to load; anchoring the fresh graph at map_start_pose "
+        "[%.3f, %.3f, %.3f].", pose.x, pose.y, pose.theta);
+      return;
+    }
+
     slam_toolbox_msgs::DeserializePoseGraph::Request req;
     slam_toolbox_msgs::DeserializePoseGraph::Response resp;
     req.initial_pose = pose;
@@ -317,10 +326,10 @@ karto::LaserRangeFinder* SlamToolbox::getLaser(const
 }
 
 /*****************************************************************************/
-bool SlamToolbox::updateMap()
+bool SlamToolbox::updateMap(bool force)
 /*****************************************************************************/
 {
-  if (sst_.getNumSubscribers() == 0)
+  if (!force && sst_.getNumSubscribers() == 0)
   {
     return true;
   }
@@ -486,6 +495,24 @@ karto::LocalizedRangeScan* SlamToolbox::addScan(
   karto::Pose2& karto_pose)
 /*****************************************************************************/
 {  
+  if (map_start_pose_)
+  {
+    // Rotate the odom frame by the seeded heading instead of pinning this scan's
+    // heading to it: which scan is processed first depends on playback timing, and
+    // its odom heading would otherwise leak into the map's orientation.
+    tf2::Quaternion seed_rotation(0., 0., 0., 1.0);
+    seed_rotation.setRPY(0., 0., map_start_pose_->GetHeading());
+    const tf2::Transform first_pose = smapper_->toTfPose(karto_pose);
+    reprocessing_transform_ =
+      tf2::Transform(seed_rotation, tf2::Vector3(map_start_pose_->GetX(),
+        map_start_pose_->GetY(), 0.0)) *
+      tf2::Transform(tf2::Quaternion(0., 0., 0., 1.0), -first_pose.getOrigin());
+    ROS_INFO("SlamToolbox: map frame rotated %.6f rad from odom, first scan placed "
+      "at [%.3f, %.3f].", map_start_pose_->GetHeading(), map_start_pose_->GetX(),
+      map_start_pose_->GetY());
+    map_start_pose_.reset();
+  }
+
   // get our localized range scan
   karto::LocalizedRangeScan* range_scan = getLocalizedRangeScan(
     laser, scan, karto_pose);
